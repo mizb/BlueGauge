@@ -11,7 +11,7 @@ scalefs_primitives = { path = "libs/scalefs_primitives" }
 scalefs_uuid = { path = "libs/scalefs_uuid" }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.58.0"
+version = "0.59.0"
 features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Foundation",

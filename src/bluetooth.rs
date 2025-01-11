@@ -1,7 +1,7 @@
 use windows::{
     core::{Error, GUID},
     Devices::Bluetooth::GenericAttributeProfile::{GattCharacteristicUuids, GattServiceUuids},
-    Devices::Bluetooth::{BluetoothConnectionStatus,BluetoothLEDevice,BluetoothDevice},
+    Devices::Bluetooth::{BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice},
     Devices::Enumeration::DeviceInformation,
     Storage::Streams::DataReader,
 };
@@ -12,13 +12,14 @@ pub struct BluetoothInfo {
     pub status: bool,
 }
 
-pub fn find_bluetooth_devices() -> windows::core::Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
+pub fn find_bluetooth_devices(
+) -> windows::core::Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
     let bt_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
     let bt_le_aqs_filter = BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)?;
 
-    let bt_devices_info_collection = 
+    let bt_devices_info_collection =
         DeviceInformation::FindAllAsyncAqsFilter(&bt_aqs_filter)?.get()?;
-    let ble_devices_info_collection = 
+    let ble_devices_info_collection =
         DeviceInformation::FindAllAsyncAqsFilter(&bt_le_aqs_filter)?.get()?;
 
     Ok((
@@ -31,7 +32,6 @@ pub fn find_bluetooth_devices() -> windows::core::Result<(Vec<BluetoothDevice>, 
                     .ok()
             })
             .collect(),
-
         ble_devices_info_collection
             .into_iter()
             .filter_map(|device_info| {
@@ -56,7 +56,7 @@ pub fn get_bluetooth_info(
         for bt_device in bt_devices {
             let name = bt_device.Name()?.to_string();
             for (n, battery) in &pnp_bt_devices_info {
-                // e.g. 
+                // e.g.
                 // bluetooth name: HUAWEI FreeBuds Pro
                 // pnp device name: HUAWEI FreeBuds Pro Hands-Free AG
                 if n.contains(&name) {
@@ -95,7 +95,6 @@ pub fn get_bluetooth_info(
             });
         }
     };
-
 
     Ok(devices_info)
 }
@@ -137,50 +136,57 @@ pub fn get_ble_battery_level(bt_le_device: &BluetoothLEDevice) -> windows::core:
     return battery_level;
 }
 
-
-use scalefs_windowspnp::{PnpDeviceNodeInfo,PnpDevicePropertyValue,PnpEnumerator};
+use scalefs_windowspnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator};
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM;
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_FriendlyName, DEVPROPKEY};
 
 #[allow(non_upper_case_globals)]
-const DEVPKEY_Bluetooth_Battery: DEVPROPKEY = DEVPROPKEY { fmtid: windows_sys::core::GUID::from_u128(0x104EA319_6EE2_4701_BD47_8DDBF425BBE5), pid:2 };
+const DEVPKEY_Bluetooth_Battery: DEVPROPKEY = DEVPROPKEY {
+    fmtid: windows_sys::core::GUID::from_u128(0x104EA319_6EE2_4701_BD47_8DDBF425BBE5),
+    pid: 2,
+};
 const BT_INSTANCE_ID: &str = "BTHENUM\\";
 
 fn get_pnp_bt_devices_info() -> Vec<(String, u8)> {
     let mut pnp_bt_devices_info: Vec<(String, u8)> = Vec::new();
     let bt_devices = get_pnp_bt_devices(GUID_DEVCLASS_SYSTEM);
 
-    let filter_bt_devices_properties = bt_devices.into_iter().filter_map(|i| {
-        match i.device_instance_id.contains(BT_INSTANCE_ID) {
-            true => i.device_instance_properties,
-            false => None,
-        }
-    });
+    if let Some(bt_devices) = bt_devices {
+        let filter_bt_devices_properties = bt_devices.into_iter().filter_map(|i| {
+            match i.device_instance_id.contains(BT_INSTANCE_ID) {
+                true => i.device_instance_properties,
+                false => None,
+            }
+        });
 
-    for bt_device_properties in filter_bt_devices_properties {
-        let (mut name, mut battery_level) = (None, None);
-        for (key, value) in bt_device_properties {
-            if key == DEVPKEY_Device_FriendlyName.into() {
-                if let PnpDevicePropertyValue::String(v) = value {
-                    name = Some(v);
+        for bt_device_properties in filter_bt_devices_properties {
+            let (mut name, mut battery_level) = (None, None);
+            for (key, value) in bt_device_properties {
+                if key == DEVPKEY_Device_FriendlyName.into() {
+                    if let PnpDevicePropertyValue::String(v) = value {
+                        name = Some(v);
+                    };
+                } else if key == DEVPKEY_Bluetooth_Battery.into() {
+                    if let PnpDevicePropertyValue::Byte(v) = value {
+                        battery_level = Some(v);
+                    };
+                } else if name.is_some() && battery_level.is_some() {
+                    pnp_bt_devices_info.push((name.unwrap(), battery_level.unwrap()));
+                    break;
                 };
-            } else if key == DEVPKEY_Bluetooth_Battery.into() {
-                if let PnpDevicePropertyValue::Byte(v) = value {
-                    battery_level = Some(v);
-                };
-            } else if name.is_some() && battery_level.is_some() {
-                pnp_bt_devices_info.push((name.unwrap(), battery_level.unwrap()));
-                break;
-            };
+            }
         }
+
+        pnp_bt_devices_info
+    } else {
+        println!("scalefs windowspnp can't find pnp devices");
+        Vec::new()
     }
-
-    pnp_bt_devices_info
 }
 
-fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Vec<PnpDeviceNodeInfo> {
+fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Option<Vec<PnpDeviceNodeInfo>> {
     match PnpEnumerator::enumerate_present_devices_by_device_setup_class(guid) {
-        Ok(devices) => devices,
-        _ => panic!("scalefs windowspnp can't find pnp devices"),
-    } 
+        Ok(devices) => Some(devices),
+        _ => None,
+    }
 }
