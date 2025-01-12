@@ -1,7 +1,8 @@
 [package]
 name = "BlueGauge"
-version = "0.1.0"
+version = "0.1.2"
 edition = "2021"
+authors = ["iKineticate <https://github.com/iKineticate>"]
 
 [dependencies]
 tray-icon = "0.19.2"
@@ -9,6 +10,9 @@ image = "0.25"
 tao = "0.31.1"
 win-toast-notify = "0.1.6"
 scalefs_windowspnp = { path = "libs/scalefs_windowspnp" }
+anyhow = "1.0.95"
+tokio = { version = "1.43.0", features = ["full"] }
+futures = "0.3"
 
 [dependencies.windows]
 version = "0.59.0"

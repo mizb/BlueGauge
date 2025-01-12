@@ -1,5 +1,4 @@
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::{self, sleep};
 use std::time::Duration;
 
 use image;
@@ -11,37 +10,42 @@ use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     TrayIcon, TrayIconBuilder, // TrayIconEvent,
 };
+use anyhow::{Result, Context};
 
 use crate::bluetooth::{find_bluetooth_devices, get_bluetooth_info, BluetoothInfo};
 
 const ICON_DATA: &[u8] = include_bytes!("../resources/logo.ico");
 
-pub fn show_systray() -> windows::core::Result<()> {
-    loop_systray()
+pub async fn show_systray() -> Result<()> {
+    loop_systray().await
 }
 
-fn loop_systray() -> windows::core::Result<()> {
-    let bluetooth_devices = find_bluetooth_devices()?;
-    let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)?;
+async fn loop_systray() -> Result<()> {
+    let bluetooth_devices = find_bluetooth_devices()
+        .await
+        .context("Failed to find bluetooth devices")?;
+    let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
+        .await
+        .context("Failed to get bluetooth devices info")?;
 
-    let (tooltip, items) = convert_tray_info(bluetooth_devices_info);
-    let tray_tooltip = Arc::new(Mutex::new(tooltip));
-    let menu_items = Arc::new(Mutex::new(items));
+    let (tooltip, menu) = convert_tray_info(bluetooth_devices_info);
+    let tooltip = Arc::new(Mutex::new(tooltip));
+    let menu = Arc::new(Mutex::new(menu));
     let menu_separator = PredefinedMenuItem::separator();
     let menu_quit = MenuItem::new("Quit", true, None);
 
     let mut tray_icon = TrayIconBuilder::new()
         .with_menu_on_left_click(true)
-        .with_icon(load_icon())
+        .with_icon(load_icon()?)
         .build()
-        .unwrap();
+        .context("Failed to build tray")?;
 
     let mut event_loop = EventLoopBuilder::new().build();
     thread_update_info(
-        Arc::clone(&tray_tooltip),
-        Arc::clone(&menu_items),
+        Arc::clone(&tooltip),
+        Arc::clone(&menu),
         event_loop.create_proxy(),
-    )?;
+    ).await?;
 
     let menu_channel = MenuEvent::receiver();
     // let tray_channel = TrayIconEvent::receiver();
@@ -54,16 +58,15 @@ fn loop_systray() -> windows::core::Result<()> {
             tao::event::Event::NewEvents(tao::event::StartCause::Init) => {
                 tray_icon = update_tray(
                     tray_icon.clone(),
-                    tray_tooltip.lock().unwrap(),
-                    menu_items.lock().unwrap(),
+                    tooltip.lock().unwrap(),
+                    menu.lock().unwrap(),
                     &menu_separator,
                     &menu_quit,
                 );
             }
             tao::event::Event::UserEvent(()) => {
-                println!("Update tray information");
                 if let (Ok(tooltip_lock), Ok(items_lock)) =
-                    (tray_tooltip.try_lock(), menu_items.try_lock())
+                    (tooltip.try_lock(), menu.try_lock())
                 {
                     tray_icon = update_tray(
                         tray_icon.clone(),
@@ -96,41 +99,39 @@ fn loop_systray() -> windows::core::Result<()> {
     Ok(())
 }
 
-fn load_icon() -> tray_icon::Icon {
+fn load_icon() -> Result<tray_icon::Icon> {
     let (icon_rgba, icon_width, icon_height) = {
         let image = image::load_from_memory(ICON_DATA)
-            .expect("Failed to open icon path")
+            .context("Failed to open icon path")?
             .into_rgba8();
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();
         (rgba, width, height)
     };
-    tray_icon::Icon::from_rgba(icon_rgba, icon_width, icon_height).expect("Failed to open icon")
+    tray_icon::Icon::from_rgba(icon_rgba, icon_width, icon_height).context("Failed to crate the logo")
 }
 
-fn thread_update_info(
+async fn thread_update_info(
     tray_tooltip_clone: Arc<Mutex<Vec<String>>>,
     menu_items_clone: Arc<Mutex<Vec<String>>>,
     event_loop_proxy: EventLoopProxy<()>,
 ) -> windows::core::Result<()> {
-    thread::spawn(move || loop {
-        println!("thread: Wait 30s");
-        sleep(Duration::from_secs(30));
-        println!("thread: Get bluetooth info");
-        let bluetooth_devices = find_bluetooth_devices().unwrap();
-        let bluetooth_devices_info =
-            get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1).unwrap();
-        let (tooltip, items) = convert_tray_info(bluetooth_devices_info);
-        println!("thread: Try update");
-        match (tray_tooltip_clone.try_lock(), menu_items_clone.try_lock()) {
-            (Ok(mut tray_tooltip), Ok(mut menu_items)) => {
-                println!("thread: Update");
-                *tray_tooltip = tooltip;
-                *menu_items = items;
-                event_loop_proxy.send_event(()).ok();
-            }
-            _ => println!("thread: Failed lock attempt"),
-        };
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let bluetooth_devices = find_bluetooth_devices().await.unwrap();
+            let bluetooth_devices_info =
+                get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1).await.unwrap();
+            let (tooltip, items) = convert_tray_info(bluetooth_devices_info);
+            match (tray_tooltip_clone.try_lock(), menu_items_clone.try_lock()) {
+                (Ok(mut tray_tooltip), Ok(mut menu_items)) => {
+                    *tray_tooltip = tooltip;
+                    *menu_items = items;
+                    event_loop_proxy.send_event(()).ok();
+                }
+                _ => println!("thread: Failed lock attempt"),
+            };
+        }
     });
 
     Ok(())
@@ -163,18 +164,30 @@ fn convert_tray_info(bluetooth_devices_info: Vec<BluetoothInfo>) -> (Vec<String>
     let mut tray_tooltip_result = Vec::new();
     let mut menu_items_result = Vec::new();
     for blue_info in bluetooth_devices_info {
+        let name = blue_info.name;
+        let battery = blue_info.battery;
         match blue_info.status {
             true => {
-                tray_tooltip_result.push(format!("🟢 {} - {}%", blue_info.name, blue_info.battery));
-                menu_items_result.push(format!("🔗 {} - {}%", blue_info.name, blue_info.battery))
+                let battery = if battery < 10 {
+                    format!("  {battery}")
+                } else {
+                    battery.to_string()
+                };
+                tray_tooltip_result
+                    .insert(0, format!("🟢 {}% - {}", battery, name));
+                menu_items_result.push(format!("{}% - {}", battery, name));
             }
             false => {
-                tray_tooltip_result
-                    .insert(0, format!("🔴 {} - {}%", blue_info.name, blue_info.battery));
+                let battery = if battery < 10 {
+                    format!("  {battery}")
+                } else {
+                    battery.to_string()
+                };
+                tray_tooltip_result.push(format!("🔴 {}% - {}", battery, name));
                 menu_items_result.insert(
                     0,
-                    format!("     {} - {}%", blue_info.name, blue_info.battery),
-                )
+                    format!("{}% - {}", battery, name),
+                );
             }
         }
     }
