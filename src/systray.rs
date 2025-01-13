@@ -10,7 +10,7 @@ use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
     TrayIcon, TrayIconBuilder, // TrayIconEvent,
 };
-use anyhow::{Result, Context};
+use anyhow::{Result, Context, anyhow};
 
 use crate::bluetooth::{find_bluetooth_devices, get_bluetooth_info, BluetoothInfo};
 
@@ -23,17 +23,16 @@ pub async fn show_systray() -> Result<()> {
 async fn loop_systray() -> Result<()> {
     let bluetooth_devices = find_bluetooth_devices()
         .await
-        .context("Failed to find bluetooth devices")?;
+        .map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
     let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
         .await
-        .context("Failed to get bluetooth devices info")?;
+        .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
 
     let (tooltip, menu) = convert_tray_info(bluetooth_devices_info);
     let tooltip = Arc::new(Mutex::new(tooltip));
     let menu = Arc::new(Mutex::new(menu));
     let menu_separator = PredefinedMenuItem::separator();
     let menu_quit = MenuItem::new("Quit", true, None);
-
     let mut tray_icon = TrayIconBuilder::new()
         .with_menu_on_left_click(true)
         .with_icon(load_icon()?)
@@ -41,10 +40,11 @@ async fn loop_systray() -> Result<()> {
         .context("Failed to build tray")?;
 
     let mut event_loop = EventLoopBuilder::new().build();
+    let event_loop_proxy = event_loop.create_proxy();
     thread_update_info(
         Arc::clone(&tooltip),
         Arc::clone(&menu),
-        event_loop.create_proxy(),
+        event_loop_proxy,
     ).await?;
 
     let menu_channel = MenuEvent::receiver();
@@ -115,8 +115,8 @@ async fn thread_update_info(
     tray_tooltip_clone: Arc<Mutex<Vec<String>>>,
     menu_items_clone: Arc<Mutex<Vec<String>>>,
     event_loop_proxy: EventLoopProxy<()>,
-) -> windows::core::Result<()> {
-    tokio::spawn(async move {
+) -> Result<()> {
+    tokio::task::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
             let bluetooth_devices = find_bluetooth_devices().await.unwrap();
@@ -166,30 +166,32 @@ fn convert_tray_info(bluetooth_devices_info: Vec<BluetoothInfo>) -> (Vec<String>
     for blue_info in bluetooth_devices_info {
         let name = blue_info.name;
         let battery = blue_info.battery;
+
         match blue_info.status {
             true => {
-                let battery = if battery < 10 {
-                    format!("  {battery}")
-                } else {
-                    battery.to_string()
-                };
                 tray_tooltip_result
-                    .insert(0, format!("🟢 {}% - {}", battery, name));
-                menu_items_result.push(format!("{}% - {}", battery, name));
+                    .insert(0, format!("🟢{:3}% - {}", battery, truncate_with_ellipsis(&name, 10)));
+                menu_items_result.push(format!("{name} - {battery}%"));
             }
             false => {
-                let battery = if battery < 10 {
-                    format!("  {battery}")
-                } else {
-                    battery.to_string()
-                };
-                tray_tooltip_result.push(format!("🔴 {}% - {}", battery, name));
+                tray_tooltip_result
+                    .push(format!("🔴{:3}% - {}", battery, truncate_with_ellipsis(&name, 10)));
                 menu_items_result.insert(
                     0,
-                    format!("{}% - {}", battery, name),
+                    format!("{name} - {battery}%"),
                 );
             }
         }
     }
     (tray_tooltip_result, menu_items_result)
+}
+
+fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    if s.chars().count() > max_chars {
+        let mut result = s.chars().take(max_chars).collect::<String>();
+        result.push_str("...");
+        result
+    } else {
+        s.to_string()
+    }
 }

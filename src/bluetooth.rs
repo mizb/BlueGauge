@@ -26,81 +26,106 @@ pub struct BluetoothInfo {
 
 pub async fn find_bluetooth_devices(
 ) -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
-    // 获取已配对蓝牙设备的过滤器（AQS 查询字符串）
+    let (bt_devices, ble_devices) = futures::try_join!(find_bt_devices(), find_ble_devices())?;
+    Ok((bt_devices, ble_devices))
+}
+
+async fn find_bt_devices() -> Result<Vec<BluetoothDevice>> {
     let bt_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
-    let ble_aqs_filter = BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)?;
 
     let bt_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&bt_aqs_filter)?
         .await
         .context("Faled to find Bluetooth Classic from all devices")?;
-    let ble_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&ble_aqs_filter)?
-        .await
-        .context("Faled to find Bluetooth Low Energy from all devices")?;
-    
+
     let bt_devices_futures = bt_devices_info_collection.into_iter().map(|device_info| {
         async move { BluetoothDevice::FromIdAsync(&device_info.Id().ok()?).ok()?.await.ok() }
     }).collect::<Vec<_>>();
+
+    let devices: Vec<_> = join_all(bt_devices_futures)
+        .await
+        .into_iter()
+        .filter_map(|x| x)
+        .collect::<Vec<_>>();
+
+    Ok(devices)
+}
+
+async fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
+    let ble_aqs_filter = BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)?;
+
+    let ble_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&ble_aqs_filter)?
+        .await
+        .context("Faled to find Bluetooth Low Energy from all devices")?;
+
     let ble_devices_futures = ble_devices_info_collection.into_iter().map(|device_info| {
         async move { BluetoothLEDevice::FromIdAsync(&device_info.Id().ok()?).ok()?.await.ok() }
     }).collect::<Vec<_>>();
 
-    let bt_devices: Vec<_> = join_all(bt_devices_futures).await.into_iter().filter_map(|x| x).collect();
-    let ble_devices: Vec<_> = join_all(ble_devices_futures).await.into_iter().filter_map(|x| x).collect();
+    let devices: Vec<_> = join_all(ble_devices_futures)
+        .await
+        .into_iter()
+        .filter_map(|x| x)
+        .collect::<Vec<_>>();
 
-    Ok((bt_devices, ble_devices))
+    Ok(devices)
 }
 
 pub async fn get_bluetooth_info(
     bt_devices: Vec<BluetoothDevice>,
     ble_devices: Vec<BluetoothLEDevice>,
 ) -> Result<Vec<BluetoothInfo>> {
+    match (bt_devices.len(), ble_devices.len()) {
+        (0, 0) => Err(anyhow!("No Classic Bluetooth or Bluetooth LE devices found")),
+        (0, _) => get_ble_info(ble_devices).await,
+        (_, 0) => get_bt_info(bt_devices).await,
+        (_, _) => {
+            let bt_futures = get_bt_info(bt_devices);
+            let ble_futures = get_ble_info(ble_devices);
+            let (bt_info, ble_info) = futures::try_join!(bt_futures, ble_futures)?;
+            let combined_info: Vec<_> = bt_info.into_iter().chain(ble_info.into_iter()).collect();
+            Ok(combined_info)
+        }
+    }
+}
+
+async fn get_bt_info(bt_devices: Vec<BluetoothDevice>) -> Result<Vec<BluetoothInfo>> {
     let mut devices_info: Vec<BluetoothInfo> = Vec::new();
-
-    if bt_devices.len() > 0 {
-        let pnp_bt_devices_info: Vec<(String, u8)> = get_pnp_bt_devices_info().await?;
-        let futures = bt_devices.iter().map(|bt_device| {
-            process_bt_device(bt_device, &pnp_bt_devices_info)
-        });
-        let results: Vec<Result<BluetoothInfo>> = join_all(futures).await;
-        for result in results {
-            match result {
-                Ok(bt_info) => devices_info.push(bt_info),
-                Err(e) => println!("{e}"),
-            }
+    let pnp_bt_devices_info: Vec<(String, u8)> = get_pnp_bt_devices_info().await?;
+    for bt_device in bt_devices {
+        match process_bt_device(&bt_device, &pnp_bt_devices_info) {
+            Ok(bt_info) => devices_info.push(bt_info),
+            Err(e) => println!("{e}"),
         }
-    };
-
-    if ble_devices.len() > 0 {
-        let futures = ble_devices.iter().map(|bt_device| {
-            process_ble_device(bt_device)
-        });
-        let results: Vec<Result<BluetoothInfo>> = join_all(futures).await;
-        for result in results {
-            match result {
-                Ok(bt_info) => devices_info.push(bt_info),
-                Err(e) => println!("{e}"),
-            }
-        }
-    };
-
+    }
     Ok(devices_info)
 }
 
-async fn process_bt_device(
+async fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<Vec<BluetoothInfo>> {
+    let mut devices_info: Vec<BluetoothInfo> = Vec::new();
+    let futures = ble_devices
+        .iter()
+        .map(|bt_device| process_ble_device(bt_device));
+    let results: Vec<Result<BluetoothInfo>> = join_all(futures).await;
+    for result in results {
+        match result {
+            Ok(bt_info) => devices_info.push(bt_info),
+            Err(e) => println!("{e}"),
+        }
+    }
+    Ok(devices_info)
+}
+
+fn process_bt_device(
     bt_device: &BluetoothDevice,
     pnp_bt_devices_info: &[(String, u8)]
 ) -> Result<BluetoothInfo> {
-    let bt_name = bt_device.Name()?.to_string();
-    for (pnp_name, battery) in pnp_bt_devices_info {
-        if pnp_name.contains(&bt_name) {            
-            return Ok(BluetoothInfo {
-                name: bt_name,
-                battery: *battery,
-                status: bt_device.ConnectionStatus()? == BCS::Connected
-            });
-        }
-    }
-    Err(anyhow!("No matching Bluetooth Classic found in Pnp device: {bt_name}"))
+    let name = bt_device.Name()?.to_string();
+    let battery = pnp_bt_devices_info.iter()
+        .find(|(pnp_name, _)| pnp_name.contains(&name))
+        .map(|(_, battery)| *battery)
+        .ok_or_else(|| anyhow!("No matching Bluetooth Classic found in Pnp device: {name}"))?;
+    let status = bt_device.ConnectionStatus()? == BCS::Connected;
+    Ok(BluetoothInfo {name, battery, status})
 }
 
 async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
@@ -111,15 +136,14 @@ async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothI
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
         .context(format!("Failed to get Bluetooth connected status: {name}"))?;
-    
     Ok(BluetoothInfo { name, battery, status })
 }
 
-async fn get_ble_battery_level(bt_le_device: &BluetoothLEDevice) -> Result<u8> {
+async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
     let battery_services_uuid: GUID = GattServiceUuids::Battery()?;
     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
 
-    let battery_services = bt_le_device
+    let battery_services = ble_device
         .GetGattServicesForUuidAsync(battery_services_uuid)?.await?
         .Services()
         .context("Failed to get BLE Services")?;
