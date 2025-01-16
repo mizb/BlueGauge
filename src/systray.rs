@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use image;
 use tao::{
-    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoopBuilder},
     platform::run_return::EventLoopExtRunReturn,
 };
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
-    TrayIcon, TrayIconBuilder, // TrayIconEvent,
+    TrayIconBuilder, // TrayIconEvent,
 };
 use anyhow::{Result, Context, anyhow};
 
@@ -16,36 +16,58 @@ use crate::bluetooth::{find_bluetooth_devices, get_bluetooth_info, BluetoothInfo
 
 const ICON_DATA: &[u8] = include_bytes!("../resources/logo.ico");
 
+// enum TrayBatteryIcon {
+//     Font,
+//     Png
+// }
+
 pub async fn show_systray() -> Result<()> {
     loop_systray().await
 }
 
 async fn loop_systray() -> Result<()> {
-    let bluetooth_devices = find_bluetooth_devices()
-        .await
-        .map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
-    let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
-        .await
-        .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
+    let (tooltip, menu) = get_bluetooth_tray_info(true).await?;
 
-    let (tooltip, menu) = convert_tray_info(bluetooth_devices_info);
     let tooltip = Arc::new(Mutex::new(tooltip));
-    let menu = Arc::new(Mutex::new(menu));
+    let tootip_clone = Arc::clone(&tooltip);
+
     let menu_separator = PredefinedMenuItem::separator();
     let menu_quit = MenuItem::new("Quit", true, None);
-    let mut tray_icon = TrayIconBuilder::new()
+    let tray_menu = Menu::new();
+    menu.iter().for_each(|text| {
+        let item = MenuItem::new(text, true, None);
+        tray_menu.append(&item).unwrap();
+    });
+    tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
+    tray_menu.append(&menu_quit).context("Failed to apped 'Quit' to Tray Menu")?;
+
+    let tray_icon = TrayIconBuilder::new()
         .with_menu_on_left_click(true)
         .with_icon(load_icon()?)
+        .with_tooltip(tooltip.lock().unwrap().join("\n"))
+        .with_menu(Box::new(tray_menu))
         .build()
         .context("Failed to build tray")?;
 
     let mut event_loop = EventLoopBuilder::new().build();
     let event_loop_proxy = event_loop.create_proxy();
-    thread_update_info(
-        Arc::clone(&tooltip),
-        Arc::clone(&menu),
-        event_loop_proxy,
-    ).await?;
+
+    tokio::task::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            match get_bluetooth_tray_info(false).await {
+                Ok((t, _ )) => {
+                    if let Ok(mut tooltip) = tootip_clone.try_lock() {
+                        *tooltip = t;
+                        event_loop_proxy.send_event(()).ok();
+                    } else {
+                        println!("Failed to acquire tooltip lock on task")
+                    }
+                },
+                Err(e) => println!("{e}")
+            };
+        }
+    });
 
     let menu_channel = MenuEvent::receiver();
     // let tray_channel = TrayIconEvent::receiver();
@@ -55,27 +77,10 @@ async fn loop_systray() -> Result<()> {
             ControlFlow::WaitUntil(std::time::Instant::now() + Duration::from_millis(100));
 
         match event {
-            tao::event::Event::NewEvents(tao::event::StartCause::Init) => {
-                tray_icon = update_tray(
-                    tray_icon.clone(),
-                    tooltip.lock().unwrap(),
-                    menu.lock().unwrap(),
-                    &menu_separator,
-                    &menu_quit,
-                );
-            }
             tao::event::Event::UserEvent(()) => {
-                if let (Ok(tooltip_lock), Ok(items_lock)) =
-                    (tooltip.try_lock(), menu.try_lock())
-                {
-                    tray_icon = update_tray(
-                        tray_icon.clone(),
-                        tooltip_lock,
-                        items_lock,
-                        &menu_separator,
-                        &menu_quit,
-                    );
-                }
+                if let Ok(t) = tooltip.try_lock() {
+                    tray_icon.set_tooltip(Some(t.join("\n"))).expect("Failed to update tray tooltip");
+                };
             }
             _ => (),
         };
@@ -111,79 +116,47 @@ fn load_icon() -> Result<tray_icon::Icon> {
     tray_icon::Icon::from_rgba(icon_rgba, icon_width, icon_height).context("Failed to crate the logo")
 }
 
-async fn thread_update_info(
-    tray_tooltip_clone: Arc<Mutex<Vec<String>>>,
-    menu_items_clone: Arc<Mutex<Vec<String>>>,
-    event_loop_proxy: EventLoopProxy<()>,
-) -> Result<()> {
-    tokio::task::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(30)).await;
-            let bluetooth_devices = find_bluetooth_devices().await.unwrap();
-            let bluetooth_devices_info =
-                get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1).await.unwrap();
-            let (tooltip, items) = convert_tray_info(bluetooth_devices_info);
-            match (tray_tooltip_clone.try_lock(), menu_items_clone.try_lock()) {
-                (Ok(mut tray_tooltip), Ok(mut menu_items)) => {
-                    *tray_tooltip = tooltip;
-                    *menu_items = items;
-                    event_loop_proxy.send_event(()).ok();
-                }
-                _ => println!("thread: Failed lock attempt"),
-            };
-        }
-    });
-
-    Ok(())
+async fn get_bluetooth_tray_info(need_menu: bool) -> Result<(Vec<String>, Vec<String>)> {
+    let bluetooth_devices = find_bluetooth_devices()
+        .await
+        .map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
+    let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
+        .await
+        .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
+    let tooltip = convert_tray_tooltip(&bluetooth_devices_info);
+    let menu = if need_menu {
+        convert_tray_menu(&bluetooth_devices_info)
+    } else {
+        Vec::new()
+    };
+    Ok((tooltip, menu))
 }
 
-fn update_tray(
-    tray_icon: TrayIcon,
-    tray_tooltip_lock: MutexGuard<Vec<String>>,
-    menu_items_lock: MutexGuard<Vec<String>>,
-    menu_separator: &PredefinedMenuItem,
-    menu_quit: &MenuItem,
-) -> TrayIcon {
-    let tray_menu = Menu::new();
-    tray_menu.append(menu_separator).unwrap();
-    tray_menu.append(menu_quit).unwrap();
-    menu_items_lock.iter().for_each(|text| {
-        let item = MenuItem::new(text, true, None);
-        tray_menu.prepend(&item).unwrap();
-    });
-
-    tray_icon
-        .set_tooltip(Some(tray_tooltip_lock.join("\n")))
-        .unwrap();
-    tray_icon.set_menu(Some(Box::new(tray_menu)));
-
-    tray_icon
-}
-
-fn convert_tray_info(bluetooth_devices_info: Vec<BluetoothInfo>) -> (Vec<String>, Vec<String>) {
-    let mut tray_tooltip_result = Vec::new();
-    let mut menu_items_result = Vec::new();
-    for blue_info in bluetooth_devices_info {
-        let name = blue_info.name;
+fn convert_tray_tooltip(bluetooth_devices_info: &[BluetoothInfo]) -> Vec<String> {
+    bluetooth_devices_info.iter().fold(Vec::new(), |mut acc, blue_info| {
+        let name = truncate_with_ellipsis(&blue_info.name, 10);
         let battery = blue_info.battery;
+        let status_icon = if blue_info.status { "🟢" } else { "🔴" };
+        // let status_icon = if blue_info.status { "[●]" } else { "[−]" };
+        let info = format!("{status_icon}{battery:3}% - {name}");
 
         match blue_info.status {
-            true => {
-                tray_tooltip_result
-                    .insert(0, format!("🟢{:3}% - {}", battery, truncate_with_ellipsis(&name, 10)));
-                menu_items_result.push(format!("{name} - {battery}%"));
-            }
-            false => {
-                tray_tooltip_result
-                    .push(format!("🔴{:3}% - {}", battery, truncate_with_ellipsis(&name, 10)));
-                menu_items_result.insert(
-                    0,
-                    format!("{name} - {battery}%"),
-                );
-            }
+            true => acc.insert(0, info),
+            false => acc.push(info)
         }
-    }
-    (tray_tooltip_result, menu_items_result)
+
+        acc
+    })
+}
+
+fn convert_tray_menu(bluetooth_devices_info: &Vec<BluetoothInfo>) -> Vec<String> {
+    bluetooth_devices_info.iter().fold(Vec::new(), |mut acc, blue_info| {
+        match blue_info.status {
+            true => acc.insert(0, blue_info.name.to_owned()),
+            false => acc.push(blue_info.name.to_owned())
+        }
+        acc
+    })
 }
 
 fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {

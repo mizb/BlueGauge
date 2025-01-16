@@ -4,7 +4,7 @@
 use std::str::FromStr;
 
 // NOTE: we break the Uuid's data fields down into four data fields (and annotate the corresponding component labels from RFC 4122; note that RFC 4122 is not a complete modern UUID spec and that we have combined the last three fields into an 8-octet sequence to match convention)
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub struct Uuid {
     pub data1: u32,     // time-low
     pub data2: u16,     // time-mid
