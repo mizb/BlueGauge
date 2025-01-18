@@ -1,0 +1,14 @@
+use tauri_winrt_notification::*;
+use anyhow::{Context, Result};
+
+pub fn notify(title: &str, text: &str, mute: bool) -> Result<()> {
+    Toast::new(Toast::POWERSHELL_APP_ID) // 
+        .title(title)
+        .text1(text)
+        .sound(mute.then_some(Sound::Default))
+        .duration(Duration::Short)
+        .show()
+        .context("unable to send notification")?;
+
+    Ok(())
+}

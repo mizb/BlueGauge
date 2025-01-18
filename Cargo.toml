@@ -8,11 +8,13 @@ authors = ["iKineticate <https://github.com/iKineticate>"]
 tray-icon = "0.19.2"
 image = "0.25"
 tao = "0.31.1"
-win-toast-notify = "0.1.6"
 scalefs_windowspnp = { path = "libs/scalefs_windowspnp" }
 anyhow = "1.0.95"
 tokio = { version = "1.43.0", features = ["full"] }
 futures = "0.3"
+rust-ini = "0.21"
+glob = "0.3.2"
+tauri-winrt-notification = "0.7.0"
 
 [dependencies.windows]
 version = "0.59.0"

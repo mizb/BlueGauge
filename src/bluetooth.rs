@@ -18,10 +18,12 @@ const DEVPKEY_Bluetooth_Battery: DEVPROPKEY = DEVPROPKEY {
 };
 const BT_INSTANCE_ID: &str = "BTHENUM\\";
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct BluetoothInfo {
     pub name: String,
     pub battery: u8,
     pub status: bool,
+    pub id: String
 }
 
 pub async fn find_bluetooth_devices(
@@ -125,7 +127,8 @@ fn process_bt_device(
         .map(|(_, battery)| *battery)
         .ok_or_else(|| anyhow!("No matching Bluetooth Classic found in Pnp device: {name}"))?;
     let status = bt_device.ConnectionStatus()? == BCS::Connected;
-    Ok(BluetoothInfo {name, battery, status})
+    let id = bt_device.DeviceId()?.to_string();
+    Ok(BluetoothInfo { name, battery, status, id })
 }
 
 async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
@@ -136,7 +139,8 @@ async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothI
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
         .context(format!("Failed to get Bluetooth connected status: {name}"))?;
-    Ok(BluetoothInfo { name, battery, status })
+    let id = ble_device.DeviceId()?.to_string();
+    Ok(BluetoothInfo { name, battery, status, id })
 }
 
 async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
