@@ -5,17 +5,20 @@ use anyhow::{Result, Context, anyhow};
 use ini::Ini;
 use glob::glob;
 
+#[derive(Clone)]
 pub struct Config {
     pub update_interval: u64,
+    pub show_disconnected_devices: bool,
     pub icon: Option<TrayIcon>,
+    pub notify_mute: bool,
     pub notify_low_battery: Option<u8>,
     pub notify_reconnection: bool,
     pub notify_disconnection: bool,
-    pub notify_new_devices: bool,
+    pub notify_added_devices: bool,
     pub notify_remove_devices: bool,
-    pub notify_mute: bool,
 }
 
+#[derive(Clone)]
 pub enum TrayIcon {
     Logo(PathBuf), // logo.png
     Font(PathBuf), // Font(*.ttf)
@@ -23,63 +26,66 @@ pub enum TrayIcon {
     None,
 }
 
-pub fn ini() -> Result<Config> {
+pub fn ini() -> Result<(Config, PathBuf)> {
     let exe_path = env::current_exe().context("Failed to get BlueGauge.exe Path")?;
     let exe_dir = exe_path.parent().ok_or(anyhow!("Failed to get BlueGauge.exe parent directory"))?;
     let ini_path = exe_dir.join("config.ini");
     if ini_path.exists() {
-        read_ini(exe_dir)
+        read_ini(exe_dir, ini_path)
     } else {
-        create_ini()
+        create_new_ini(ini_path)
     }
 }
 
-fn create_ini() -> Result<Config> {
+fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     let mut ini = Ini::new();
 
-    ini.with_section(Some("Setting"))
-        .set("update_interval", "30") // Value: 数字（范围：0~100，单位为秒）
-        .set("icon", ""); // Value: logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
+    ini.with_section(Some("Settings"))
+        .set("update_interval", "30") // 默认30（单位秒）
+        .set("icon", "none") // Value: none、logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
+        .set("show_disconnected_devices", "false");
 
     ini.with_section(Some("Notifications"))
-        .set("notify_low_battery", "") // 15（默认单位百分比）
-        .set("notify_reconnection", "")
-        .set("notify_disconnection", "")
-        .set("notify_new_devices", "")
-        .set("notify_remove_devices", "")
-        .set("notify_mute", "");
+        .set("notify_low_battery", "none") // Value：none、number（0~100，单位百分比）
+        .set("notify_reconnection", "false")
+        .set("notify_disconnection", "false")
+        .set("notify_added_devices", "false")
+        .set("notify_remove_devices", "flase")
+        .set("notify_mute", "false");
 
-    ini.write_to_file("config.ini").context("Failed to create config.ini")?;
+    ini.write_to_file(&ini_path).context("Failed to create config.ini")?;
 
     let config = Config {
         update_interval: 30,
         icon: None,
+        show_disconnected_devices: false,
         notify_low_battery: None,
         notify_reconnection: false,
         notify_disconnection: false,
-        notify_new_devices: false,
+        notify_added_devices: false,
         notify_remove_devices: false,
         notify_mute: false,
     };
 
-    Ok(config)
+    Ok((config, ini_path))
 }
 
-fn read_ini(exe_dir: &Path) -> Result<Config> {
-    let ini = Ini::load_from_file("config.ini").context("Failed to load config.ini")?;
-    let setting_section = ini.section(Some("Setting")).context("Failed to get 'Setting' Section")?;
-    let notifications_section = ini.section(Some("Notifications")).context("Failed to get 'Notifications' Section")?;
+fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
+    let ini = Ini::load_from_file(&ini_path)
+        .context("Failed to load config.ini in BlueGauge.exe directory")?;
+    let setting_section = ini.section(Some("Settings"))
+        .context("Failed to get 'Settings' Section")?;
+    let notifications_section = ini.section(Some("Notifications"))
+        .context("Failed to get 'Notifications' Section")?;
 
-    let update_interval = match setting_section.get("update_interval") {
-        Some(v) => {
-            if v.is_empty() {
-                30
-            } else {
-                v.trim().parse::<u64>().context("'update_interval' is not a number.")?
-            }
-        },
-        None => 30,
-    };
+    let update_interval = setting_section
+        .get("update_interval")
+        .filter(|v| !v.trim().is_empty())
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(30);
+
+    let show_disconnected_devices = setting_section.get("show_disconnected_devices")
+        .map_or(false, |v| v.trim().to_lowercase() == "true");
 
     let icon = setting_section.get("icon").map(|v| {
         match v.trim().to_lowercase().as_str() {
@@ -120,30 +126,17 @@ fn read_ini(exe_dir: &Path) -> Result<Config> {
         }
     });
 
-    let notify_low_battery = match notifications_section.get("notify_low_battery") {
-        Some(v) => {
-            if v.trim().is_empty() {
-                None
-            } else {
-                if let Ok(battery) = v.trim().parse::<u8>() {
-                    if battery <= 100 {
-                        Some(battery)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-        }
-        None => None
-    };
+    let notify_low_battery = notifications_section
+        .get("notify_low_battery")
+        .filter(|v| !v.trim().is_empty() && v.trim().to_lowercase() != "none")
+        .and_then(|v| v.trim().parse::<u8>().ok())
+        .filter(|&battery| battery <= 100);
 
     let notify_reconnection = notifications_section.get("notify_reconnection")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
     let notify_disconnection = notifications_section.get("notify_disconnection")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
-    let notify_new_devices = notifications_section.get("notify_new_devices")
+    let notify_added_devices = notifications_section.get("notify_added_devices")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
     let notify_remove_devices = notifications_section.get("notify_remove_devices")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
@@ -153,13 +146,38 @@ fn read_ini(exe_dir: &Path) -> Result<Config> {
     let config = Config {
         update_interval,
         icon,
+        show_disconnected_devices,
         notify_low_battery,
         notify_reconnection,
         notify_disconnection,
-        notify_new_devices,
+        notify_added_devices,
         notify_remove_devices,
         notify_mute
     };
 
-    Ok(config)
+    Ok((config, ini_path))
+}
+
+pub fn write_ini_update_interval(ini_path: &Path, value: u64) {
+    let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
+    ini.set_to(Some("Settings"), "update_interval".to_owned(), value.to_string());
+    ini.write_to_file(ini_path).expect("Failed to write INI file");
+}
+
+pub fn write_ini_notifications(ini_path: &Path, key: &str, value: String) {
+    let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
+    ini.set_to(Some("Notifications"), key.to_owned(), value);
+    ini.write_to_file(ini_path).expect("Failed to write INI file");
+}
+
+pub fn write_ini_notify_low_battery(ini_path: &Path, value: &str) {
+    let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
+    ini.set_to(Some("Notifications"), "notify_low_battery".to_owned(), value.to_owned());
+    ini.write_to_file(ini_path).expect("Failed to write INI file");
+}
+
+pub fn write_ini_show_disconnected(ini_path: &Path, value: String) {
+    let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
+    ini.set_to(Some("Settings"), "show_disconnected_devices".to_owned(), value);
+    ini.write_to_file(ini_path).expect("Failed to write INI file");
 }

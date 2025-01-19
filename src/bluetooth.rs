@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use windows::{
     core::{GUID, Error, HRESULT},
     Devices::Bluetooth::GenericAttributeProfile::{GattCharacteristicUuids, GattServiceUuids},
@@ -75,7 +77,7 @@ async fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
 pub async fn get_bluetooth_info(
     bt_devices: Vec<BluetoothDevice>,
     ble_devices: Vec<BluetoothLEDevice>,
-) -> Result<Vec<BluetoothInfo>> {
+) -> Result<HashSet<BluetoothInfo>> {
     match (bt_devices.len(), ble_devices.len()) {
         (0, 0) => Err(anyhow!("No Classic Bluetooth or Bluetooth LE devices found")),
         (0, _) => get_ble_info(ble_devices).await,
@@ -84,33 +86,41 @@ pub async fn get_bluetooth_info(
             let bt_futures = get_bt_info(bt_devices);
             let ble_futures = get_ble_info(ble_devices);
             let (bt_info, ble_info) = futures::try_join!(bt_futures, ble_futures)?;
-            let combined_info: Vec<_> = bt_info.into_iter().chain(ble_info.into_iter()).collect();
+            let combined_info: HashSet<_> = bt_info.into_iter().chain(ble_info.into_iter()).collect();
             Ok(combined_info)
         }
     }
 }
 
-async fn get_bt_info(bt_devices: Vec<BluetoothDevice>) -> Result<Vec<BluetoothInfo>> {
-    let mut devices_info: Vec<BluetoothInfo> = Vec::new();
+async fn get_bt_info(bt_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
+    let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
     let pnp_bt_devices_info: Vec<(String, u8)> = get_pnp_bt_devices_info().await?;
     for bt_device in bt_devices {
         match process_bt_device(&bt_device, &pnp_bt_devices_info) {
-            Ok(bt_info) => devices_info.push(bt_info),
+            Ok(bt_info) => {
+                if !devices_info.insert(bt_info) {
+                    continue;
+                }
+            },
             Err(e) => println!("{e}"),
         }
     }
     Ok(devices_info)
 }
 
-async fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<Vec<BluetoothInfo>> {
-    let mut devices_info: Vec<BluetoothInfo> = Vec::new();
+async fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<BluetoothInfo>> {
+    let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
     let futures = ble_devices
         .iter()
-        .map(|bt_device| process_ble_device(bt_device));
+        .map(|ble_device| process_ble_device(ble_device));
     let results: Vec<Result<BluetoothInfo>> = join_all(futures).await;
     for result in results {
         match result {
-            Ok(bt_info) => devices_info.push(bt_info),
+            Ok(bt_info) => {
+                if !devices_info.insert(bt_info) {
+                    continue;
+                }
+            },
             Err(e) => println!("{e}"),
         }
     }
