@@ -55,10 +55,10 @@ async fn loop_systray() -> Result<()> {
     let event_loop_proxy = event_loop.create_proxy();
 
     tokio::task::spawn({
+        let config = Arc::clone(&config);
         let tooltip = Arc::clone(&tooltip);
         let menu_devices = Arc::clone(&menu_devices);
         let blue_info = Arc::clone(&blue_info);
-        let config = Arc::clone(&config);
         let update_menu_event = Arc::clone(&update_menu_event);
         let low_battery_devices = Arc::clone(&low_battery_devices);
         async move {
@@ -68,10 +68,10 @@ async fn loop_systray() -> Result<()> {
                 std::thread::sleep(std::time::Duration::from_secs(update_interval));
     
                 if let Err(e) = update_tray(
+                    Arc::clone(&config),
                     Arc::clone(&tooltip),
                     Arc::clone(&menu_devices),
                     Arc::clone(&blue_info),
-                    Arc::clone(&config),
                     Arc::clone(&update_menu_event),
                     Arc::clone(&low_battery_devices),
                     &event_loop_proxy
@@ -244,10 +244,10 @@ fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
 }
 
 async fn update_tray(
+    config: Arc<Mutex<Config>>,
     tooltip: Arc<Mutex<Vec<String>>>,
     menu_devices: Arc<Mutex<Vec<String>>>,
     blue_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
-    config: Arc<Mutex<Config>>,
     update_menu_event: Arc<Mutex<bool>>,
     low_battery_devices: Arc<Mutex<HashMap<String, bool>>>,
     proxy: &EventLoopProxy<bool>
@@ -256,138 +256,137 @@ async fn update_tray(
         get_bluetooth_tray_info(Arc::clone(&config)).await?;
 
     let (
+        config,
         mut original_tooltip,
         mut original_menu_devices,
         mut original_blue_info,
         mut update_menu_event,
-        config
     ) = (
+        config.try_lock().map_err(|_| anyhow!("Failed to acquire 'config' lock on task"))?,
         tooltip.try_lock().map_err(|_| anyhow!("Failed to acquire 'tooltip' lock on task,"))?,
         menu_devices.try_lock().map_err(|_| anyhow!("Failed to acquire 'menu_devices' lock on task"))?,
         blue_info.try_lock().map_err(|_| anyhow!("Failed to acquire 'blue_info' lock on task"))?,
         update_menu_event.try_lock().map_err(|_| anyhow!("Failed to acquire 'update_menu_event' lock on task"))?,
-        config.try_lock().map_err(|_| anyhow!("Failed to acquire 'config' lock on task"))?
     );
 
     // 蓝牙信息的集合进行比较时，以HashSet承载信息，与Vec相比，其优势为无需考虑顺序即可比较
-    if current_blue_info != *original_blue_info || *update_menu_event {
-        let changed_devices = current_blue_info.difference(&original_blue_info).collect::<HashSet<_>>();
-        let reverted_devices = original_blue_info.difference(&current_blue_info).collect::<HashSet<_>>();
+    if current_blue_info == *original_blue_info && !*update_menu_event {
+        return Ok(());
+    }
 
-        let [updated_status_from_current, // 当前状态改变的设备
-            updated_battery_from_current, // 当前电量改变的设备
-            updated_devices_from_current, // 当前信息改变的设备
-            updated_devices_from_reverted, // 既往信息改变的设备
-        ]: [HashSet<&BluetoothInfo>;4] =
-            changed_devices.iter().cloned()
-                .fold([HashSet::new(), HashSet::new(), HashSet::new(), HashSet::new()], |mut acc, cd| {
-                    if let Some(rd) = reverted_devices.iter().cloned().find(|rd| cd.id == rd.id) {
-                        if cd.status != rd.status { acc[0].insert(cd); }
-                        if cd.battery != rd.battery { acc[1].insert(cd); }
-                        if cd.battery != rd.battery || cd.status != rd.status {
-                            acc[2].insert(cd);
-                            acc[3].insert(rd);
-                        }
-                    }
-                    acc
-                });
+    let changed_devices = current_blue_info.difference(&original_blue_info).collect::<HashSet<_>>();
+    let reverted_devices = original_blue_info.difference(&current_blue_info).collect::<HashSet<_>>();
 
-        if !updated_battery_from_current.is_empty() {
-            if let Some(set_battery) = config.notify_low_battery {
-                let mut messages = String::new();
-
-                let mut low_battery_devices = low_battery_devices.try_lock()
-                    .map_err(|_| anyhow!("Failed to acquire 'low_battery_devices' lock on task"))?;
-
-                for current_blue_info in updated_battery_from_current {
-                    if current_blue_info.battery < set_battery {
-                        // 若设备电量低于阈值，且'low_battery_devices'无记录或有记录但无标记，则标记并发送低电量通知
-                        let notified = low_battery_devices.entry(current_blue_info.id.clone()).or_insert(false);
-                        if !*notified {
-                            *notified = true;
-                            messages.push_str(&format!("Device Name: {}\n", current_blue_info.name));
-                        }
-                    } else {
-                        // 若设备电量已恢复至阈值以上（即'low_battery_devices'有记录），且已低电量通知（已标记），则取消标记
-                        if let Some(notified) = low_battery_devices.get_mut(&current_blue_info.id) {
-                            if *notified { *notified = false }
-                        }
+    let [updated_status_from_current, // 当前状态改变的设备
+        updated_battery_from_current, // 当前电量改变的设备
+        updated_devices_from_current, // 当前信息改变的设备
+        updated_devices_from_reverted, // 既往信息改变的设备
+    ]: [HashSet<&BluetoothInfo>;4] =
+        changed_devices.iter().cloned()
+            .fold([HashSet::new(), HashSet::new(), HashSet::new(), HashSet::new()], |mut acc, cd| {
+                if let Some(rd) = reverted_devices.iter().cloned().find(|rd| cd.id == rd.id) {
+                    if cd.status != rd.status { acc[0].insert(cd); }
+                    if cd.battery != rd.battery { acc[1].insert(cd); }
+                    if cd.battery != rd.battery || cd.status != rd.status {
+                        acc[2].insert(cd);
+                        acc[3].insert(rd);
                     }
                 }
+                acc
+            });
 
-                if !messages.is_empty() {
-                    notify(
-                        &format!("Bluetooth Battery Below {set_battery}%"),
-                        &messages.trim(),
-                        config.notify_mute
-                    )?
+    if !updated_battery_from_current.is_empty() {
+        if let Some(set_battery) = config.notify_low_battery {
+            let mut messages = String::new();
+
+            let mut low_battery_devices = low_battery_devices.try_lock()
+                .map_err(|_| anyhow!("Failed to acquire 'low_battery_devices' lock on task"))?;
+
+            for current_blue_info in updated_battery_from_current {
+                // 若设备电量低于阈值，且'low_battery_devices'无记录或有记录但无标记，则标记并发送低电量通知（无需考虑连接状态，因为出现更新了就说明有连接过）
+                if current_blue_info.battery < set_battery {
+                    let notified = low_battery_devices.entry(current_blue_info.id.clone()).or_insert(false);
+                    if !*notified {
+                        *notified = true;
+                        messages.push_str(&format!("Device Name: {}\n", current_blue_info.name));
+                    }
+                // 若设备电量恢复至阈值以上，且'low_battery_devices'有记录及标记，则取消标记允许低电量通知
+                } else if let Some(notified) = low_battery_devices.get_mut(&current_blue_info.id) {
+                    *notified = false;
                 }
             }
-        }
 
-        let Config {
-            notify_reconnection,
-            notify_disconnection,
-            notify_added_devices,
-            notify_remove_devices,
-            ..
-        } = *config;
-
-        if !updated_status_from_current.is_empty() {
-            let [reconnection, disconnection] = updated_status_from_current
-                .iter()
-                .fold([String::new(), String::new()], |[mut reconnection, mut disconnection], current_blue_info| {
-                    match (current_blue_info.status, notify_reconnection, notify_disconnection) {
-                        (true, true, _) => reconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
-                        (false, _, true) => disconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
-                        (_, _, _) => ()
-                    }
-                    [reconnection, disconnection]
-                });
-            if notify_reconnection && !reconnection.is_empty() { // 重新连接
-                notify("Bluetooth Device Reconnected", &reconnection.trim(), config.notify_mute)?
-            }
-            if notify_disconnection && !disconnection.is_empty() { // 断开连接
-                notify("Bluetooth Device Disconnected", &disconnection.trim(), config.notify_mute)?
+            if !messages.is_empty() {
+                let title = &format!("Bluetooth Battery Below {set_battery}%");
+                let text = &messages.trim();
+                let mute = config.notify_mute;
+                notify(title, text, mute)?
             }
         }
+    }
 
-        let added_devices = changed_devices.difference(&updated_devices_from_current).collect::<HashSet<_>>();
-        let remove_devices = reverted_devices.difference(&updated_devices_from_reverted).collect::<HashSet<_>>();
-        if !added_devices.is_empty() {
-            *update_menu_event = true;
-            if notify_added_devices { // 新设备被添加
-                let messeges = added_devices.into_iter().fold(String::new(), |mut acc, b| {
-                    let name = format!("Device Name: {}\n", b.name);
-                    acc.push_str(&name);
-                    acc
-                });
-                notify("New Bluetooth Device Connected", &messeges.trim(), config.notify_mute)?
-            }
-        }
-        if !remove_devices.is_empty() {
-            *update_menu_event = true;
-            if notify_remove_devices { // 设备被删除
-                let messeges = remove_devices.into_iter().fold(String::new(), |mut acc, b| {
-                    let name = format!("Device Name: {}\n", b.name);
-                    acc.push_str(&name);
-                    acc
-                });
-                notify("Bluetooth Device Removed", &messeges.trim(), config.notify_mute)?
-            }
-        }
+    let Config {
+        notify_reconnection,
+        notify_disconnection,
+        notify_added_devices,
+        notify_remove_devices,
+        ..
+    } = *config;
 
-        *original_tooltip = current_tooltip;
-        *original_blue_info = current_blue_info;
-
-        // 若设备添减或者更改指定设置，则更新托盘菜单
-        if *update_menu_event {
-            *original_menu_devices = current_menu_devices;
-            *update_menu_event = false;
-            proxy.send_event(true).context("Failed to send update tray tooltip and menu events to EventLoop")?;
-        } else {
-            proxy.send_event(false).context("Failed to send update tray tooltip and menu events to EventLoop")?;
+    if !updated_status_from_current.is_empty() {
+        let [reconnection, disconnection] = updated_status_from_current
+            .iter()
+            .fold([String::new(), String::new()], |[mut reconnection, mut disconnection], current_blue_info| {
+                match (current_blue_info.status, notify_reconnection, notify_disconnection) {
+                    (true, true, _) => reconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
+                    (false, _, true) => disconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
+                    (_, _, _) => ()
+                }
+                [reconnection, disconnection]
+            });
+        if notify_reconnection && !reconnection.is_empty() { // 重新连接
+            notify("Bluetooth Device Reconnected", &reconnection.trim(), config.notify_mute)?
         }
+        if notify_disconnection && !disconnection.is_empty() { // 断开连接
+            notify("Bluetooth Device Disconnected", &disconnection.trim(), config.notify_mute)?
+        }
+    }
+
+    let added_devices = changed_devices.difference(&updated_devices_from_current).collect::<HashSet<_>>();
+    let remove_devices = reverted_devices.difference(&updated_devices_from_reverted).collect::<HashSet<_>>();
+    if !added_devices.is_empty() {
+        *update_menu_event = true;
+        if notify_added_devices { // 新设备被添加
+            let messeges = added_devices.into_iter().fold(String::new(), |mut acc, b| {
+                let name = format!("Device Name: {}\n", b.name);
+                acc.push_str(&name);
+                acc
+            });
+            notify("New Bluetooth Device Connected", &messeges.trim(), config.notify_mute)?
+        }
+    }
+    if !remove_devices.is_empty() {
+        *update_menu_event = true;
+        if notify_remove_devices { // 原设备被删除
+            let messeges = remove_devices.into_iter().fold(String::new(), |mut acc, b| {
+                let name = format!("Device Name: {}\n", b.name);
+                acc.push_str(&name);
+                acc
+            });
+            notify("Bluetooth Device Removed", &messeges.trim(), config.notify_mute)?
+        }
+    }
+
+    *original_tooltip = current_tooltip;
+    *original_blue_info = current_blue_info;
+
+    // 若设备添减或者更改菜单设置，则更新托盘菜单
+    if *update_menu_event {
+        *original_menu_devices = current_menu_devices;
+        *update_menu_event = false;
+        proxy.send_event(true).context("Failed to send update tray tooltip and menu events to EventLoop")?;
+    } else {
+        proxy.send_event(false).context("Failed to send update tray tooltip event to EventLoop")?;
     }
 
     Ok(())
@@ -451,10 +450,10 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
             ..Default::default()
         }));
 
-    menu_devices.iter().for_each(|text| {
+    for text in menu_devices {
         let item = CheckMenuItem::with_id(text, text, true, false, None);
-        tray_menu.append(&item).unwrap();
-    });
+        tray_menu.append(&item).map_err(|_| anyhow!("Failed to append 'Devices' to Tray Menu"))?;
+    }
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu.append(&menu_show_disconnected_devices).context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
@@ -463,6 +462,7 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
     tray_menu.append(&menu_notify).context("Failed to apped 'Update Interval' to Tray Menu")?;
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu.append(&menu_about).context("Failed to apped 'About' to Tray Menu")?;
+    tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu.append(&menu_quit).context("Failed to apped 'Quit' to Tray Menu")?;
 
     Ok(tray_menu)
