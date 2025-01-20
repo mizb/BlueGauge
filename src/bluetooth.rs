@@ -25,8 +25,14 @@ pub struct BluetoothInfo {
     pub name: String,
     pub battery: u8,
     pub status: bool,
-    pub id: String
+    // pub type: BluetoothType(BLE(...)、BT)
+    pub id: String,
 }
+
+// pub enum BluetoothType {
+
+// }
+
 
 pub async fn find_bluetooth_devices(
 ) -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {

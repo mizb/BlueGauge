@@ -1,15 +1,17 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use image;
 use tao::{
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     platform::run_return::EventLoopExtRunReturn,
 };
-use tray_icon::menu::{AboutMetadata, CheckMenuItem, IsMenuItem, Submenu};
 use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    menu::{
+        Menu, MenuItem, Submenu, CheckMenuItem, PredefinedMenuItem, 
+        AboutMetadata, IsMenuItem, MenuEvent,
+    },
     TrayIconBuilder,
 };
 use anyhow::{Result, Context, anyhow};
@@ -18,12 +20,11 @@ use crate::bluetooth::{find_bluetooth_devices, get_bluetooth_info, BluetoothInfo
 use crate::config::*;
 use crate::notify::notify;
 
-const ICON_DATA: &[u8] = include_bytes!("../resources/logo.ico");
-
-// enum MenuEvents {
-//     Update,
-//     Notify,
+// enum UserEvent {
+//     Update
 // }
+
+const ICON_DATA: &[u8] = include_bytes!("../resources/logo.ico");
 
 pub async fn show_systray() -> Result<()> {
     loop_systray().await
@@ -31,9 +32,6 @@ pub async fn show_systray() -> Result<()> {
 
 async fn loop_systray() -> Result<()> {
     let (ini, ini_path) = ini()?;
-
-    let mut event_loop = EventLoopBuilder::<bool>::with_user_event().build();
-    let event_loop_proxy = event_loop.create_proxy();
 
     let (tooltip, menu_devices, blue_info) =
         get_bluetooth_tray_info(Arc::new(Mutex::new(ini.clone()))).await?;
@@ -50,32 +48,36 @@ async fn loop_systray() -> Result<()> {
     let tooltip = Arc::new(Mutex::new(tooltip));
     let menu_devices = Arc::new(Mutex::new(menu_devices));
     let blue_info = Arc::new(Mutex::new(blue_info));
-    let should_update_menu = Arc::new(Mutex::new(false));
+    let update_menu_event = Arc::new(Mutex::new(false));
+    let low_battery_devices = Arc::new(Mutex::new(HashMap::<String, bool>::new())); // (bluetooth_id, notified)
 
-    let config_clone = Arc::clone(&config);
-    let tooltip_clone = Arc::clone(&tooltip);
-    let menu_devices_clone = Arc::clone(&menu_devices);
-    let blue_info_clone = Arc::clone(&blue_info);
-    let should_update_menu_clone = Arc::clone(&should_update_menu);
-    tokio::task::spawn(async move {
-        loop {
-            let update_interval = {
-                let config = config_clone.lock().unwrap();
-                config.update_interval
-            };
+    let mut event_loop = EventLoopBuilder::<bool>::with_user_event().build();
+    let event_loop_proxy = event_loop.create_proxy();
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(update_interval)).await;
+    tokio::task::spawn({
+        let tooltip = Arc::clone(&tooltip);
+        let menu_devices = Arc::clone(&menu_devices);
+        let blue_info = Arc::clone(&blue_info);
+        let config = Arc::clone(&config);
+        let update_menu_event = Arc::clone(&update_menu_event);
+        let low_battery_devices = Arc::clone(&low_battery_devices);
+        async move {
+            loop {
+                let update_interval = config.lock().map_or(30, |c| c.update_interval);
 
-            let tooltip = Arc::clone(&tooltip_clone);
-            let menu_devices = Arc::clone(&menu_devices_clone);
-            let blue_info = Arc::clone(&blue_info_clone);
-            let config = Arc::clone(&config_clone);
-            let should_update_menu = Arc::clone(&should_update_menu_clone);
-
-            if let Err(e) = update_tray(
-                tooltip, menu_devices, blue_info, config, should_update_menu, &event_loop_proxy
-            ).await {
-                println!("{e}")
+                std::thread::sleep(std::time::Duration::from_secs(update_interval));
+    
+                if let Err(e) = update_tray(
+                    Arc::clone(&tooltip),
+                    Arc::clone(&menu_devices),
+                    Arc::clone(&blue_info),
+                    Arc::clone(&config),
+                    Arc::clone(&update_menu_event),
+                    Arc::clone(&low_battery_devices),
+                    &event_loop_proxy
+                ).await {
+                    eprintln!("Failed to update tray: {e}");
+                }
             }
         }
     });
@@ -86,20 +88,20 @@ async fn loop_systray() -> Result<()> {
     let config_clone = Arc::clone(&config);
     let tooltip_clone = Arc::clone(&tooltip);
     let menu_devices_clone = Arc::clone(&menu_devices);
-    let should_update_menu_clone = Arc::clone(&should_update_menu);
+    let update_menu_event_clone = Arc::clone(&update_menu_event);
 
     let return_code = event_loop.run_return(|event, _, control_flow| {
         *control_flow =
             ControlFlow::WaitUntil(std::time::Instant::now() + Duration::from_millis(100));
 
-        if let tao::event::Event::UserEvent(should_update_menu) = event {
+        if let tao::event::Event::UserEvent(update_menu_event) = event {
             if let Ok(t) = tooltip_clone.lock() {
                 tray_icon.set_tooltip(Some(t.join("\n"))).expect("Failed to update tray tooltip");
             } else {
-                println!("Failed to acquire 'tooltip' lock, doing something else")
+                println!("Failed to acquire 'tooltip' lock")
             }
 
-            if should_update_menu {
+            if update_menu_event {
                 match (menu_devices_clone.lock(), config_clone.lock()) {
                     (Ok(menu_devices), Ok(config)) => {
                         if let Ok(tray_menu) = create_tray_menu(&menu_devices, &config) {
@@ -108,7 +110,7 @@ async fn loop_systray() -> Result<()> {
                             println!("Failed to update(set) tray menu")
                         }
                     },
-                    (_, _) => println!("Failed to acquire 'menu_devices' or 'config' lock, doing something else")
+                    (_, _) => println!("Failed to acquire 'menu_devices' or 'config' lock")
                 }
             }
         }
@@ -122,11 +124,11 @@ async fn loop_systray() -> Result<()> {
                 let id = menu_event.id().as_ref();
                 // 如果id是数字，即表示为更新频率时间
                 if let Ok(update_interval) = id.trim().parse::<u64>() {
-                    // 记得检查菜单此时是被check还是uncheck
+                    // 注意：需要等待下一次更新后，才会取消其他选项
                     config.update_interval = update_interval;
                     write_ini_update_interval(&ini_path, update_interval);
-                    if let Ok(mut should_update_menu) = should_update_menu_clone.lock() {
-                        *should_update_menu = true
+                    if let Ok(mut update_menu_event) = update_menu_event_clone.lock() {
+                        *update_menu_event = true
                     }
                 } else {
                     match id {
@@ -155,7 +157,7 @@ async fn loop_systray() -> Result<()> {
                                 config.notify_low_battery = None;
                                 write_ini_notify_low_battery(&ini_path, "none");
                             } else {
-                                // 自行设置config.ini
+                                // 单独创建一个菜单，然后蓝牙信息的结构体额外添加一项用来表示是否已经通知过，初始均为未通知，后续被通知过的就标记（如果此时该设备电量大于最低电量则取消标记）
                                 config.notify_low_battery = Some(15);
                                 write_ini_notify_low_battery(&ini_path, "15");
                             }
@@ -163,8 +165,8 @@ async fn loop_systray() -> Result<()> {
                         "show_disconnected_devices" => {
                             config.show_disconnected_devices = !config.show_disconnected_devices;
                             write_ini_show_disconnected(&ini_path, config.show_disconnected_devices.to_string());
-                            if let Ok(mut should_update_menu) = should_update_menu_clone.lock() {
-                                *should_update_menu = true
+                            if let Ok(mut update_menu_event) = update_menu_event_clone.lock() {
+                                *update_menu_event = true
                             }
                         },
                         _ => ()
@@ -246,87 +248,101 @@ async fn update_tray(
     menu_devices: Arc<Mutex<Vec<String>>>,
     blue_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
     config: Arc<Mutex<Config>>,
-    should_update_menu: Arc<Mutex<bool>>,
+    update_menu_event: Arc<Mutex<bool>>,
+    low_battery_devices: Arc<Mutex<HashMap<String, bool>>>,
     proxy: &EventLoopProxy<bool>
 ) -> Result<()> {
-    let config_clone = Arc::clone(&config);
     let (current_tooltip, current_menu_devices, current_blue_info) = 
-        get_bluetooth_tray_info(config_clone).await?;
+        get_bluetooth_tray_info(Arc::clone(&config)).await?;
 
     let (
         mut original_tooltip,
         mut original_menu_devices,
         mut original_blue_info,
-        mut should_update_menu,
+        mut update_menu_event,
         config
     ) = (
-        tooltip.try_lock().map_err(|_| anyhow!("Failed to acquire 'tooltip' lock on task, doing something else."))?,
-        menu_devices.try_lock().map_err(|_| anyhow!("Failed to acquire 'menu_devices' lock on task, doing something else."))?,
-        blue_info.try_lock().map_err(|_| anyhow!("Failed to acquire 'blue_info' lock on task, doing something else."))?,
-        should_update_menu.try_lock().map_err(|_| anyhow!("Failed to acquire 'should_update_menu' lock on task, doing something else."))?,
-        config.try_lock().map_err(|_| anyhow!("Failed to acquire 'config' lock on task, doing something else."))?
+        tooltip.try_lock().map_err(|_| anyhow!("Failed to acquire 'tooltip' lock on task,"))?,
+        menu_devices.try_lock().map_err(|_| anyhow!("Failed to acquire 'menu_devices' lock on task"))?,
+        blue_info.try_lock().map_err(|_| anyhow!("Failed to acquire 'blue_info' lock on task"))?,
+        update_menu_event.try_lock().map_err(|_| anyhow!("Failed to acquire 'update_menu_event' lock on task"))?,
+        config.try_lock().map_err(|_| anyhow!("Failed to acquire 'config' lock on task"))?
     );
 
-    // 标记已经通知的软件，除非这个软件电量恢复正常后取消标记
-    if let Some(battery) = config.notify_low_battery {
-        let messeges = current_blue_info.iter().fold(String::new(), |mut acc, blue_info| {
-            if blue_info.battery < battery {
-                let name = format!("Device Name: {}\n", blue_info.name);
-                acc.push_str(&name);
-            }
-            acc
-        });
-
-        if !messeges.is_empty() {
-            notify(
-                &format!("Bluetooth Battery Below {battery}%"),
-                &messeges.trim(),
-                config.notify_mute
-            )?
-        }
-    }
-
-    // 蓝牙信息的集合进行比较时，HashSet无需考虑顺序进行比较
-    if current_blue_info != *original_blue_info || *should_update_menu {
-        let (
-            notify_reconnection,
-            notify_disconnection,
-            notify_added_devices,
-            notify_remove_devices
-        ) = (
-            config.notify_reconnection,
-            config.notify_disconnection,
-            config.notify_added_devices,
-            config.notify_remove_devices
-        );
-
+    // 蓝牙信息的集合进行比较时，以HashSet承载信息，与Vec相比，其优势为无需考虑顺序即可比较
+    if current_blue_info != *original_blue_info || *update_menu_event {
         let changed_devices = current_blue_info.difference(&original_blue_info).collect::<HashSet<_>>();
         let reverted_devices = original_blue_info.difference(&current_blue_info).collect::<HashSet<_>>();
-        let mut updated_devices_from_current = HashSet::new();
-        let mut updated_devices_from_reverted = HashSet::new();
-        for changed_device in changed_devices.clone() {
-            for reverted_device in reverted_devices.clone() {
-                if changed_device.id == reverted_device.id {
-                    if changed_device.status != reverted_device.status || changed_device.battery != reverted_device.battery {
-                        updated_devices_from_current.insert(changed_device);
-                        updated_devices_from_reverted.insert(reverted_device);
+
+        let [updated_status_from_current, // 当前状态改变的设备
+            updated_battery_from_current, // 当前电量改变的设备
+            updated_devices_from_current, // 当前信息改变的设备
+            updated_devices_from_reverted, // 既往信息改变的设备
+        ]: [HashSet<&BluetoothInfo>;4] =
+            changed_devices.iter().cloned()
+                .fold([HashSet::new(), HashSet::new(), HashSet::new(), HashSet::new()], |mut acc, cd| {
+                    if let Some(rd) = reverted_devices.iter().cloned().find(|rd| cd.id == rd.id) {
+                        if cd.status != rd.status { acc[0].insert(cd); }
+                        if cd.battery != rd.battery { acc[1].insert(cd); }
+                        if cd.battery != rd.battery || cd.status != rd.status {
+                            acc[2].insert(cd);
+                            acc[3].insert(rd);
+                        }
                     }
+                    acc
+                });
+
+        if !updated_battery_from_current.is_empty() {
+            if let Some(set_battery) = config.notify_low_battery {
+                let mut messages = String::new();
+
+                let mut low_battery_devices = low_battery_devices.try_lock()
+                    .map_err(|_| anyhow!("Failed to acquire 'low_battery_devices' lock on task"))?;
+
+                for current_blue_info in updated_battery_from_current {
+                    if current_blue_info.battery < set_battery {
+                        // 若设备电量低于阈值，且'low_battery_devices'无记录或有记录但无标记，则标记并发送低电量通知
+                        let notified = low_battery_devices.entry(current_blue_info.id.clone()).or_insert(false);
+                        if !*notified {
+                            *notified = true;
+                            messages.push_str(&format!("Device Name: {}\n", current_blue_info.name));
+                        }
+                    } else {
+                        // 若设备电量已恢复至阈值以上（即'low_battery_devices'有记录），且已低电量通知（已标记），则取消标记
+                        if let Some(notified) = low_battery_devices.get_mut(&current_blue_info.id) {
+                            if *notified { *notified = false }
+                        }
+                    }
+                }
+
+                if !messages.is_empty() {
+                    notify(
+                        &format!("Bluetooth Battery Below {set_battery}%"),
+                        &messages.trim(),
+                        config.notify_mute
+                    )?
                 }
             }
         }
 
-        if updated_devices_from_current.len() > 0 {
-            let [reconnection, disconnection] = updated_devices_from_current
-                .clone()
-                .into_iter()
-                .fold([String::new(), String::new()], |mut acc, blue_info| {
-                    let name = format!("Device Name: {}\n", blue_info.name);
-                    match (blue_info.status, notify_reconnection, notify_disconnection) {
-                        (true, true, _) => acc[0].push_str(&name),
-                        (false, _, true) => acc[1].push_str(&name),
+        let Config {
+            notify_reconnection,
+            notify_disconnection,
+            notify_added_devices,
+            notify_remove_devices,
+            ..
+        } = *config;
+
+        if !updated_status_from_current.is_empty() {
+            let [reconnection, disconnection] = updated_status_from_current
+                .iter()
+                .fold([String::new(), String::new()], |[mut reconnection, mut disconnection], current_blue_info| {
+                    match (current_blue_info.status, notify_reconnection, notify_disconnection) {
+                        (true, true, _) => reconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
+                        (false, _, true) => disconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
                         (_, _, _) => ()
                     }
-                    acc
+                    [reconnection, disconnection]
                 });
             if notify_reconnection && !reconnection.is_empty() { // 重新连接
                 notify("Bluetooth Device Reconnected", &reconnection.trim(), config.notify_mute)?
@@ -338,11 +354,8 @@ async fn update_tray(
 
         let added_devices = changed_devices.difference(&updated_devices_from_current).collect::<HashSet<_>>();
         let remove_devices = reverted_devices.difference(&updated_devices_from_reverted).collect::<HashSet<_>>();
-        let added_devices_len = added_devices.len();
-        let remove_devices_len = remove_devices.len();
-
-        if added_devices_len > 0 {
-            *should_update_menu = true;
+        if !added_devices.is_empty() {
+            *update_menu_event = true;
             if notify_added_devices { // 新设备被添加
                 let messeges = added_devices.into_iter().fold(String::new(), |mut acc, b| {
                     let name = format!("Device Name: {}\n", b.name);
@@ -352,9 +365,8 @@ async fn update_tray(
                 notify("New Bluetooth Device Connected", &messeges.trim(), config.notify_mute)?
             }
         }
-
-        if remove_devices_len > 0 {
-            *should_update_menu = true;
+        if !remove_devices.is_empty() {
+            *update_menu_event = true;
             if notify_remove_devices { // 设备被删除
                 let messeges = remove_devices.into_iter().fold(String::new(), |mut acc, b| {
                     let name = format!("Device Name: {}\n", b.name);
@@ -369,9 +381,9 @@ async fn update_tray(
         *original_blue_info = current_blue_info;
 
         // 若设备添减或者更改指定设置，则更新托盘菜单
-        if *should_update_menu {
+        if *update_menu_event {
             *original_menu_devices = current_menu_devices;
-            *should_update_menu = false;
+            *update_menu_event = false;
             proxy.send_event(true).context("Failed to send update tray tooltip and menu events to EventLoop")?;
         } else {
             proxy.send_event(false).context("Failed to send update tray tooltip and menu events to EventLoop")?;
@@ -452,5 +464,6 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu.append(&menu_about).context("Failed to apped 'About' to Tray Menu")?;
     tray_menu.append(&menu_quit).context("Failed to apped 'Quit' to Tray Menu")?;
+
     Ok(tray_menu)
 }
