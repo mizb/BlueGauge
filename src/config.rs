@@ -9,7 +9,7 @@ use glob::glob;
 pub struct Config {
     pub update_interval: u64,
     pub show_disconnected_devices: bool,
-    pub icon: Option<TrayIcon>,
+    pub icon: Option<ShowIcon>,
     pub notify_mute: bool,
     pub notify_low_battery: Option<u8>,
     pub notify_reconnection: bool,
@@ -19,7 +19,7 @@ pub struct Config {
 }
 
 #[derive(Clone)]
-pub enum TrayIcon {
+pub enum ShowIcon {
     Logo(PathBuf), // logo.png
     Font(PathBuf), // Font(*.ttf)
     Png(Vec<(PathBuf, u8)>),
@@ -92,17 +92,17 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
             "logo" => {
                 let logo_path = exe_dir.join("logo.png");
                 if logo_path.is_file() {
-                    TrayIcon::Logo(exe_dir.join("logo.png"))
+                    ShowIcon::Logo(exe_dir.join("logo.png"))
                 } else {
-                    TrayIcon::None
+                    ShowIcon::None
                 }
             },
             "font" => {
                 let font_path = exe_dir.join("font.ttf");
                 if font_path.is_file() {
-                    TrayIcon::Font(exe_dir.join("font.ttf"))
+                    ShowIcon::Font(exe_dir.join("font.ttf"))
                 } else {
-                    TrayIcon::None
+                    ShowIcon::None
                 }
             },
             "battery_png" => {
@@ -117,12 +117,12 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
                     })
                     .collect::<Vec<_>>();
                 if battery_indicator_images.is_empty() {
-                    TrayIcon::None
+                    ShowIcon::None
                 } else {
-                    TrayIcon::Png(battery_indicator_images)
+                    ShowIcon::Png(battery_indicator_images)
                 }
             },
-            _ => TrayIcon::None
+            _ => ShowIcon::None
         }
     });
 
