@@ -170,9 +170,9 @@ pub fn write_ini_notifications(ini_path: &Path, key: &str, value: String) {
     ini.write_to_file(ini_path).expect("Failed to write INI file");
 }
 
-pub fn write_ini_notify_low_battery(ini_path: &Path, value: &str) {
+pub fn write_ini_notify_low_battery(ini_path: &Path, value: u8) {
     let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
-    ini.set_to(Some("Notifications"), "notify_low_battery".to_owned(), value.to_owned());
+    ini.set_to(Some("Notifications"), "notify_low_battery".to_owned(), value.to_string());
     ini.write_to_file(ini_path).expect("Failed to write INI file");
 }
 
