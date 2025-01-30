@@ -9,6 +9,8 @@ use glob::glob;
 pub struct Config {
     pub update_interval: u64,
     pub show_disconnected_devices: bool,
+    pub truncate_bluetooth_name: bool,
+    pub battery_prefix_name: bool,
     pub icon: Option<ShowIcon>,
     pub notify_mute: bool,
     pub notify_low_battery: Option<u8>,
@@ -43,7 +45,9 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     ini.with_section(Some("Settings"))
         .set("update_interval", "30") // 默认30（单位秒）
         .set("icon", "none") // Value: none、logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
-        .set("show_disconnected_devices", "false");
+        .set("show_disconnected_devices", "false")
+        .set("truncate_bluetooth_name", "false")
+        .set("battery_prefix_name", "false");
 
     ini.with_section(Some("Notifications"))
         .set("notify_low_battery", "none") // Value：none、number（0~100，单位百分比）
@@ -59,6 +63,8 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         update_interval: 30,
         icon: None,
         show_disconnected_devices: false,
+        truncate_bluetooth_name: false,
+        battery_prefix_name: false,
         notify_low_battery: None,
         notify_reconnection: false,
         notify_disconnection: false,
@@ -85,6 +91,12 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         .unwrap_or(30);
 
     let show_disconnected_devices = setting_section.get("show_disconnected_devices")
+        .map_or(false, |v| v.trim().to_lowercase() == "true");
+
+    let truncate_bluetooth_name = setting_section.get("truncate_bluetooth_name")
+        .map_or(false, |v| v.trim().to_lowercase() == "true");
+
+    let battery_prefix_name = setting_section.get("battery_prefix_name")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
 
     let icon = setting_section.get("icon").map(|v| {
@@ -147,6 +159,8 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         update_interval,
         icon,
         show_disconnected_devices,
+        truncate_bluetooth_name,
+        battery_prefix_name,
         notify_low_battery,
         notify_reconnection,
         notify_disconnection,
@@ -158,26 +172,14 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     Ok((config, ini_path))
 }
 
-pub fn write_ini_update_interval(ini_path: &Path, value: u64) {
-    let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
-    ini.set_to(Some("Settings"), "update_interval".to_owned(), value.to_string());
-    ini.write_to_file(ini_path).expect("Failed to write INI file");
-}
-
 pub fn write_ini_notifications(ini_path: &Path, key: &str, value: String) {
     let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
     ini.set_to(Some("Notifications"), key.to_owned(), value);
     ini.write_to_file(ini_path).expect("Failed to write INI file");
 }
 
-pub fn write_ini_notify_low_battery(ini_path: &Path, value: u8) {
+pub fn write_ini_settings(ini_path: &Path, key: &str, value: String) {
     let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
-    ini.set_to(Some("Notifications"), "notify_low_battery".to_owned(), value.to_string());
-    ini.write_to_file(ini_path).expect("Failed to write INI file");
-}
-
-pub fn write_ini_show_disconnected(ini_path: &Path, value: String) {
-    let mut ini = Ini::load_from_file(ini_path).expect("Failed to load config.ini in BlueGauge.exe directory");
-    ini.set_to(Some("Settings"), "show_disconnected_devices".to_owned(), value);
+    ini.set_to(Some("Settings"), key.to_owned(), value);
     ini.write_to_file(ini_path).expect("Failed to write INI file");
 }

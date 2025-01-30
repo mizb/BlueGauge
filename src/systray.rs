@@ -97,7 +97,7 @@ async fn loop_systray() -> Result<()> {
 
                 std::thread::sleep(std::time::Duration::from_secs(update_interval));
 
-                if let Ok(mut updated_in_advance) = updated_in_advance.lock() {
+                if let Ok(mut updated_in_advance) = updated_in_advance.try_lock() {
                     if std::mem::replace(&mut *updated_in_advance, false) {
                         continue;
                     }
@@ -197,7 +197,7 @@ async fn loop_systray() -> Result<()> {
                 // 如菜单ID可以格式化为u64，则菜单事件对应的是更新频率的设置
                 if let Ok(update_interval) = menu_id.trim().parse::<u64>() {
                     config.update_interval = update_interval;
-                    write_ini_update_interval(&ini_path, update_interval);
+                    write_ini_settings(&ini_path, "update_interval",update_interval.to_string());
                     if let Ok(mut update_menu_event) = update_menu_event.lock() {
                         if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
                             eprintln!("{err}")
@@ -205,10 +205,11 @@ async fn loop_systray() -> Result<()> {
                             *update_menu_event = true;
                         }
                     }
+                // 如菜单ID可以格式化为f64，则菜单事件对应的是设备低电量的设置
                 } else if let Ok(low_battery) = menu_id.trim().parse::<f64>() {
                     let low_battery = (low_battery * 100.0).floor().clamp(0.0, 99.0) as u8;
                     config.notify_low_battery = if low_battery == 0 { None } else { Some(low_battery) };
-                    write_ini_notify_low_battery(&ini_path, low_battery);
+                    write_ini_settings(&ini_path, "notify_low_battery",low_battery.to_string());
                     if let Ok(mut update_menu_event) = update_menu_event.lock() {
                         if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
                             eprintln!("{err}");
@@ -240,7 +241,41 @@ async fn loop_systray() -> Result<()> {
                         },
                         "show_disconnected_devices" => {
                             config.show_disconnected_devices = !config.show_disconnected_devices;
-                            write_ini_show_disconnected(&ini_path, config.show_disconnected_devices.to_string());
+                            write_ini_settings(
+                                &ini_path,
+                                "show_disconnected_devices",
+                                config.show_disconnected_devices.to_string()
+                            );
+                            if let Ok(mut update_menu_event) = update_menu_event.lock() {
+                                if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
+                                    eprintln!("{err}")
+                                } else {
+                                    *update_menu_event = true;
+                                }
+                            }
+                        },
+                        "truncate_bluetooth_name" => {
+                            config.truncate_bluetooth_name = !config.truncate_bluetooth_name;
+                            write_ini_settings(
+                                &ini_path,
+                                "truncate_bluetooth_name",
+                                config.truncate_bluetooth_name.to_string()
+                            );
+                            if let Ok(mut update_menu_event) = update_menu_event.lock() {
+                                if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
+                                    eprintln!("{err}")
+                                } else {
+                                    *update_menu_event = true;
+                                }
+                            }
+                        },
+                        "battery_prefix_name" => {
+                            config.battery_prefix_name = !config.battery_prefix_name;
+                            write_ini_settings(
+                                &ini_path,
+                                "battery_prefix_name",
+                                config.battery_prefix_name.to_string()
+                            );
                             if let Ok(mut update_menu_event) = update_menu_event.lock() {
                                 if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
                                     eprintln!("{err}")
@@ -429,19 +464,32 @@ async fn get_bluetooth_tray_info(config: Arc<Mutex<Config>>) -> Result<(Vec<Stri
         .await
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
     let show_disconnected_devices = config.lock().map_or(false, |c| c.show_disconnected_devices);
-    let (tooltip, menu_devices) = convert_tray_info(&bluetooth_devices_info, show_disconnected_devices);
+    let truncate_bluetooth_name = config.lock().map_or(false, |c| c.truncate_bluetooth_name);
+    let battery_prefix_name = config.lock().map_or(false, |c| c.battery_prefix_name);
+    let (tooltip, menu_devices) = convert_tray_info(
+        &bluetooth_devices_info,
+        show_disconnected_devices,
+        truncate_bluetooth_name,
+        battery_prefix_name,
+    );
     Ok((tooltip, menu_devices, bluetooth_devices_info))
 }
 
 fn convert_tray_info(
     bluetooth_devices_info: &HashSet<BluetoothInfo>,
     show_disconnected_devices: bool,
+    truncate_bluetooth_name: bool,
+    battery_prefix_name: bool,
 ) -> (Vec<String>, Vec<String>) {
     bluetooth_devices_info.iter().fold((Vec::new(), Vec::new()), |mut acc, blue_info| {
-        let name = truncate_with_ellipsis(&blue_info.name, 10);
+        let name = truncate_with_ellipsis(truncate_bluetooth_name, &blue_info.name, 10);
         let battery = blue_info.battery;
-        let status_icon = if blue_info.status { "🟢" } else { "🔴" }; // { "[●]" } else { "[−]" }
-        let info = format!("{status_icon}{battery:3}% - {name}");
+        let status_icon = if blue_info.status { "🟢" } else { "🔴" };
+        let info = if battery_prefix_name {
+            format!("{status_icon}{battery:3}% - {name}")
+        } else {
+            format!("{status_icon}{name} - {battery:3}%")
+        };
         match blue_info.status {
             true => {
                 acc.0.insert(0, info);
@@ -459,8 +507,8 @@ fn convert_tray_info(
     })
 }
 
-fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
-    if s.chars().count() > max_chars {
+fn truncate_with_ellipsis(truncate_bluetooth_name: bool, s: &str, max_chars: usize) -> String {
+    if truncate_bluetooth_name && s.chars().count() > max_chars {
         let mut result = s.chars().take(max_chars).collect::<String>();
         result.push_str("...");
         result
@@ -478,9 +526,25 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
 
     let menu_show_disconnected_devices = CheckMenuItem::with_id(
         "show_disconnected_devices",
-        "Show Disconnected", 
+        "Show Disconnected Devices", 
         true,
         config.show_disconnected_devices,
+        None
+    );
+
+    let truncate_bluetooth_name = CheckMenuItem::with_id(
+        "truncate_bluetooth_name",
+        "Truncate Device Name", 
+        true,
+        config.truncate_bluetooth_name,
+        None
+    );
+
+    let battery_prefix_name = CheckMenuItem::with_id(
+        "battery_prefix_name",
+        "Battery Prefix Name", 
+        true,
+        config.battery_prefix_name,
         None
     );
 
@@ -510,6 +574,7 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
         &CheckMenuItem::with_id("0.25", "25%", true, low_battery.map_or(false, |v| v == 25), None) as &dyn IsMenuItem,
     ];
     let notify_low_battery = Submenu::with_items("Low Battery", true, low_battery_items)?;
+
     let notify_items = &[
         &CheckMenuItem::with_id("notify_mute", "Notify Silently", true, config.notify_mute, None) as &dyn IsMenuItem,
         &notify_low_battery  as &dyn IsMenuItem,
@@ -518,7 +583,6 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
         &CheckMenuItem::with_id("notify_added_devices", "New Devices", true, config.notify_added_devices, None) as &dyn IsMenuItem,
         &CheckMenuItem::with_id("notify_remove_devices", "Remove Devices", true, config.notify_remove_devices, None) as &dyn IsMenuItem,
     ];
-
     let menu_notify = Submenu::with_items("Notifications", true, notify_items)?;
 
     let menu_about = PredefinedMenuItem::about(
@@ -531,16 +595,23 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
             ..Default::default()
         }));
 
+    let settings_items = &[
+        &menu_show_disconnected_devices as &dyn IsMenuItem,
+        &truncate_bluetooth_name as &dyn IsMenuItem,
+        &battery_prefix_name as &dyn IsMenuItem,
+        &menu_update as &dyn IsMenuItem,
+        &menu_notify as &dyn IsMenuItem,
+    ];
+
+    let menu_setting = Submenu::with_items("Settings", true, settings_items)?;
+
     for text in menu_devices {
         let item = CheckMenuItem::with_id(text, text, true, false, None);
         tray_menu.append(&item).map_err(|_| anyhow!("Failed to append 'Devices' to Tray Menu"))?;
     }
+
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
-    tray_menu.append(&menu_show_disconnected_devices).context("Failed to apped 'Separator' to Tray Menu")?;
-    tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
-    tray_menu.append(&menu_update).context("Failed to apped 'Update Interval' to Tray Menu")?;
-    tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
-    tray_menu.append(&menu_notify).context("Failed to apped 'Update Interval' to Tray Menu")?;
+    tray_menu.append(&menu_setting).context("Failed to apped 'Update Interval' to Tray Menu")?;
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu.append(&menu_about).context("Failed to apped 'About' to Tray Menu")?;
     tray_menu.append(&menu_separator).context("Failed to apped 'Separator' to Tray Menu")?;
