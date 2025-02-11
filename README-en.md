@@ -1,8 +1,11 @@
 ## Function
 
-- [ ] Setting：设备电量作为托盘图标（字体或电池图标）
-- [x] Setting：更新时间
-- [ ] Setting：Auto start
+- [ ] Setting：Device power as tray icon (font or battery icon)
+- [x] Setting：Update interval
+- [x] Setting：Auto start
+- [x] Setting：Shows unconnected devices
+- [x] Setting：Truncate devices Name
+- [x] Setting：Changing the device power location
 - [x] Setting-notice：Mute notice
 - [x] Setting-notice：Low battery notice
 - [x] Setting-notice：Notification when reconnecting the device

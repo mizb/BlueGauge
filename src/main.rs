@@ -5,6 +5,8 @@ mod bluetooth;
 mod systray;
 mod config;
 mod notify;
+mod language;
+mod startup;
 
 use crate::{systray::show_systray, notify::notify};
 

@@ -15,6 +15,7 @@ futures = "0.3"
 rust-ini = "0.21"
 glob = "0.3.2"
 tauri-winrt-notification = "0.7.0"
+winreg = "0.55"
 
 [dependencies.windows]
 version = "0.59.0"
@@ -24,6 +25,7 @@ features = [
     "Devices_Enumeration",
     "Foundation_Collections",
     "Storage_Streams",
+    "Win32_Globalization",
 ]
 
 [dependencies.windows-sys]
@@ -37,5 +39,8 @@ features = [
 embed-resource = "3.0.1"
 
 [profile.release]
-lto = true
+lto = "fat"
 codegen-units = 1
+opt-level = "s"
+panic = "abort"
+strip = "debuginfo"

@@ -1,3 +1,9 @@
+use crate::bluetooth::{find_bluetooth_devices, get_bluetooth_info, BluetoothInfo};
+use crate::config::*;
+use crate::language::{Language, Localization};
+use crate::notify::notify;
+use crate::startup::{get_startup_status, set_startup};
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::collections::{HashMap, HashSet};
@@ -15,10 +21,6 @@ use tray_icon::{
     TrayIconBuilder,
 };
 use anyhow::{Result, Context, anyhow};
-
-use crate::bluetooth::{find_bluetooth_devices, get_bluetooth_info, BluetoothInfo};
-use crate::config::*;
-use crate::notify::notify;
 
 #[derive(Debug)]
 enum TrayEvent {
@@ -254,12 +256,12 @@ async fn loop_systray() -> Result<()> {
                                 }
                             }
                         },
-                        "truncate_bluetooth_name" => {
-                            config.truncate_bluetooth_name = !config.truncate_bluetooth_name;
+                        "truncate_device_name" => {
+                            config.truncate_device_name = !config.truncate_device_name;
                             write_ini_settings(
                                 &ini_path,
-                                "truncate_bluetooth_name",
-                                config.truncate_bluetooth_name.to_string()
+                                "truncate_device_name",
+                                config.truncate_device_name.to_string()
                             );
                             if let Ok(mut update_menu_event) = update_menu_event.lock() {
                                 if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
@@ -283,6 +285,11 @@ async fn loop_systray() -> Result<()> {
                                     *update_menu_event = true;
                                 }
                             }
+                        },
+                        "startup" => {
+                            let should_startup =
+                                !get_startup_status ().expect("Failed to get startup status");
+                            set_startup(should_startup).expect("Failed to set Launch at Startup")
                         },
                         _ => ()
                     }
@@ -315,6 +322,9 @@ async fn update_tray(
     low_battery_devices: Arc<Mutex<HashMap<String, bool>>>,
     proxy: &EventLoopProxy<TrayEvent>
 ) -> Result<()> {
+    let language = Language::get_system_language();
+    let loc = Localization::get(language);
+
     let (current_tooltip, current_menu_devices, current_blue_info) = 
         get_bluetooth_tray_info(Arc::clone(&config)).await?;
 
@@ -370,7 +380,7 @@ async fn update_tray(
                 if current_blue_info.battery < set_battery {
                     let notified = low_battery_devices.entry(current_blue_info.id.clone()).or_insert(false);
                     if !std::mem::replace(&mut *notified, true) {
-                        messages.push_str(&format!("{}: {}% battery remaining\n", current_blue_info.name, current_blue_info.battery));
+                        messages.push_str(&format!("{}: {}%\n", current_blue_info.name, current_blue_info.battery));
                     }
                 // 若设备电量恢复至阈值以上，且'low_battery_devices'有记录及标记，则取消标记允许低电量通知
                 } else if let Some(notified) = low_battery_devices.get_mut(&current_blue_info.id) {
@@ -379,7 +389,7 @@ async fn update_tray(
             }
 
             if !messages.is_empty() {
-                let title = &format!("Bluetooth Battery Below {set_battery}%");
+                let title = &format!("{} {set_battery}%", loc.bluetooth_battery_below);
                 let text = &messages.trim();
                 let mute = config.notify_mute;
                 notify(title, text, mute)?
@@ -400,17 +410,17 @@ async fn update_tray(
             .iter()
             .fold([String::new(), String::new()], |[mut reconnection, mut disconnection], current_blue_info| {
                 match (current_blue_info.status, notify_reconnection, notify_disconnection) {
-                    (true, true, _) => reconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
-                    (false, _, true) => disconnection.push_str(&format!("Device Name: {}\n", current_blue_info.name)),
+                    (true, true, _) => reconnection.push_str(&format!("{}: {}\n", loc.device_name, current_blue_info.name)),
+                    (false, _, true) => disconnection.push_str(&format!("{}: {}\n", loc.device_name, current_blue_info.name)),
                     (_, _, _) => ()
                 }
                 [reconnection, disconnection]
             });
         if notify_reconnection && !reconnection.is_empty() { // 重新连接
-            notify("Bluetooth Device Reconnected", &reconnection.trim(), config.notify_mute)?
+            notify(loc.bluetooth_device_reconnected, &reconnection.trim(), config.notify_mute)?
         }
         if notify_disconnection && !disconnection.is_empty() { // 断开连接
-            notify("Bluetooth Device Disconnected", &disconnection.trim(), config.notify_mute)?
+            notify(loc.bluetooth_device_disconnected, &disconnection.trim(), config.notify_mute)?
         }
     }
 
@@ -420,11 +430,11 @@ async fn update_tray(
         *update_menu_event = true;
         if notify_added_devices {
             let messeges = added_devices.into_iter().fold(String::new(), |mut acc, b| {
-                let name = format!("Device Name: {}\n", b.name);
+                let name = format!("{}: {}\n", loc.device_name, b.name);
                 acc.push_str(&name);
                 acc
             });
-            notify("New Bluetooth Device Connected", &messeges.trim(), config.notify_mute)?
+            notify(loc.new_bluetooth_device_connected, &messeges.trim(), config.notify_mute)?
         }
     }
 
@@ -434,11 +444,11 @@ async fn update_tray(
         *update_menu_event = true;
         if notify_remove_devices {
             let messeges = remove_devices.into_iter().fold(String::new(), |mut acc, b| {
-                let name = format!("Device Name: {}\n", b.name);
+                let name = format!("{}: {}\n", loc.device_name, b.name);
                 acc.push_str(&name);
                 acc
             });
-            notify("Bluetooth Device Removed", &messeges.trim(), config.notify_mute)?
+            notify(loc.bluetooth_device_removed, &messeges.trim(), config.notify_mute)?
         }
     }
 
@@ -464,12 +474,12 @@ async fn get_bluetooth_tray_info(config: Arc<Mutex<Config>>) -> Result<(Vec<Stri
         .await
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
     let show_disconnected_devices = config.lock().map_or(false, |c| c.show_disconnected_devices);
-    let truncate_bluetooth_name = config.lock().map_or(false, |c| c.truncate_bluetooth_name);
+    let truncate_device_name = config.lock().map_or(false, |c| c.truncate_device_name);
     let battery_prefix_name = config.lock().map_or(false, |c| c.battery_prefix_name);
     let (tooltip, menu_devices) = convert_tray_info(
         &bluetooth_devices_info,
         show_disconnected_devices,
-        truncate_bluetooth_name,
+        truncate_device_name,
         battery_prefix_name,
     );
     Ok((tooltip, menu_devices, bluetooth_devices_info))
@@ -478,11 +488,11 @@ async fn get_bluetooth_tray_info(config: Arc<Mutex<Config>>) -> Result<(Vec<Stri
 fn convert_tray_info(
     bluetooth_devices_info: &HashSet<BluetoothInfo>,
     show_disconnected_devices: bool,
-    truncate_bluetooth_name: bool,
+    truncate_device_name: bool,
     battery_prefix_name: bool,
 ) -> (Vec<String>, Vec<String>) {
     bluetooth_devices_info.iter().fold((Vec::new(), Vec::new()), |mut acc, blue_info| {
-        let name = truncate_with_ellipsis(truncate_bluetooth_name, &blue_info.name, 10);
+        let name = truncate_with_ellipsis(truncate_device_name, &blue_info.name, 10);
         let battery = blue_info.battery;
         let status_icon = if blue_info.status { "🟢" } else { "🔴" };
         let info = if battery_prefix_name {
@@ -507,8 +517,8 @@ fn convert_tray_info(
     })
 }
 
-fn truncate_with_ellipsis(truncate_bluetooth_name: bool, s: &str, max_chars: usize) -> String {
-    if truncate_bluetooth_name && s.chars().count() > max_chars {
+fn truncate_with_ellipsis(truncate_device_name: bool, s: &str, max_chars: usize) -> String {
+    if truncate_device_name && s.chars().count() > max_chars {
         let mut result = s.chars().take(max_chars).collect::<String>();
         result.push_str("...");
         result
@@ -518,31 +528,34 @@ fn truncate_with_ellipsis(truncate_bluetooth_name: bool, s: &str, max_chars: usi
 }
 
 fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu> {
+    let language = Language::get_system_language();
+    let loc = Localization::get(language);
+
     let tray_menu = Menu::new();
 
     let menu_separator = PredefinedMenuItem::separator();
 
-    let menu_quit = MenuItem::with_id("quit", "Quit", true, None);
+    let menu_quit = MenuItem::with_id("quit", loc.exsit, true, None);
 
     let menu_show_disconnected_devices = CheckMenuItem::with_id(
         "show_disconnected_devices",
-        "Show Disconnected Devices", 
+        loc.show_disconnected_devices, 
         true,
         config.show_disconnected_devices,
         None
     );
 
-    let truncate_bluetooth_name = CheckMenuItem::with_id(
-        "truncate_bluetooth_name",
-        "Truncate Device Name", 
+    let menu_truncate_device_name = CheckMenuItem::with_id(
+        "truncate_device_name",
+        loc.truncate_device_name,
         true,
-        config.truncate_bluetooth_name,
+        config.truncate_device_name,
         None
     );
 
-    let battery_prefix_name = CheckMenuItem::with_id(
+    let menu_battery_prefix_name = CheckMenuItem::with_id(
         "battery_prefix_name",
-        "Battery Prefix Name", 
+        loc.battery_prefix_name, 
         true,
         config.battery_prefix_name,
         None
@@ -559,34 +572,53 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
 
     let menu_update = Submenu::with_id_and_items(
         "update",
-        "Update Interval",
+        loc.update_interval,
         true,
         update_items,
     )?;
 
     let low_battery = config.notify_low_battery;
     let low_battery_items = &[
-        &CheckMenuItem::with_id("0.0", "none", true, low_battery.is_none(), None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.0", loc.none, true, low_battery.is_none(), None) as &dyn IsMenuItem,
         &CheckMenuItem::with_id("0.05", "5%", true, low_battery.map_or(false, |v| v == 5), None) as &dyn IsMenuItem,
         &CheckMenuItem::with_id("0.1", "10%", true, low_battery.map_or(false, |v| v == 10), None) as &dyn IsMenuItem,
         &CheckMenuItem::with_id("0.15", "15%", true, low_battery.map_or(false, |v| v == 15), None) as &dyn IsMenuItem,
         &CheckMenuItem::with_id("0.2", "20%", true, low_battery.map_or(false, |v| v == 20), None) as &dyn IsMenuItem,
         &CheckMenuItem::with_id("0.25", "25%", true, low_battery.map_or(false, |v| v == 25), None) as &dyn IsMenuItem,
     ];
-    let notify_low_battery = Submenu::with_items("Low Battery", true, low_battery_items)?;
+    let notify_low_battery = Submenu::with_items(loc.notify_low_battery, true, low_battery_items)?;
 
     let notify_items = &[
-        &CheckMenuItem::with_id("notify_mute", "Notify Silently", true, config.notify_mute, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("notify_mute", loc.notify_mute, true, config.notify_mute, None) as &dyn IsMenuItem,
         &notify_low_battery  as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("notify_reconnection", "Reconnection", true, config.notify_reconnection, None) as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("notify_disconnection", "Disconnection", true, config.notify_disconnection, None) as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("notify_added_devices", "New Devices", true, config.notify_added_devices, None) as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("notify_remove_devices", "Remove Devices", true, config.notify_remove_devices, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("notify_reconnection", loc.notify_reconnection, true, config.notify_reconnection, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("notify_disconnection", loc.notify_disconnection, true, config.notify_disconnection, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("notify_added_devices", loc.notify_added_devices, true, config.notify_added_devices, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("notify_remove_devices", loc.notify_remove_devices, true, config.notify_remove_devices, None) as &dyn IsMenuItem,
     ];
-    let menu_notify = Submenu::with_items("Notifications", true, notify_items)?;
+    let menu_notify = Submenu::with_items(loc.notifications, true, notify_items)?;
+
+    let menu_startup = CheckMenuItem::with_id(
+        "startup",
+        loc.startup,
+        true,
+        get_startup_status()?,
+        None
+    );
+
+    let settings_items = &[
+        &menu_update as &dyn IsMenuItem,
+        &menu_notify as &dyn IsMenuItem,
+        &menu_startup as &dyn IsMenuItem,
+        &menu_show_disconnected_devices as &dyn IsMenuItem,
+        &menu_truncate_device_name as &dyn IsMenuItem,
+        &menu_battery_prefix_name as &dyn IsMenuItem,
+    ];
+
+    let menu_setting = Submenu::with_items(loc.settings, true, settings_items)?;
 
     let menu_about = PredefinedMenuItem::about(
-        Some("About"),
+        Some(loc.about),
         Some(AboutMetadata {
             name: Some("BluetGauge".to_owned()),
             version: Some("0.1.2".to_owned()),
@@ -594,16 +626,6 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
             website: Some("https://github.com/iKineticate/BlueGauge".to_owned()),
             ..Default::default()
         }));
-
-    let settings_items = &[
-        &menu_show_disconnected_devices as &dyn IsMenuItem,
-        &truncate_bluetooth_name as &dyn IsMenuItem,
-        &battery_prefix_name as &dyn IsMenuItem,
-        &menu_update as &dyn IsMenuItem,
-        &menu_notify as &dyn IsMenuItem,
-    ];
-
-    let menu_setting = Submenu::with_items("Settings", true, settings_items)?;
 
     for text in menu_devices {
         let item = CheckMenuItem::with_id(text, text, true, false, None);

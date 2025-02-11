@@ -9,7 +9,7 @@ use glob::glob;
 pub struct Config {
     pub update_interval: u64,
     pub show_disconnected_devices: bool,
-    pub truncate_bluetooth_name: bool,
+    pub truncate_device_name: bool,
     pub battery_prefix_name: bool,
     pub icon: Option<ShowIcon>,
     pub notify_mute: bool,
@@ -46,7 +46,7 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         .set("update_interval", "30") // 默认30（单位秒）
         .set("icon", "none") // Value: none、logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
         .set("show_disconnected_devices", "false")
-        .set("truncate_bluetooth_name", "false")
+        .set("truncate_device_name", "false")
         .set("battery_prefix_name", "false");
 
     ini.with_section(Some("Notifications"))
@@ -63,7 +63,7 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         update_interval: 30,
         icon: None,
         show_disconnected_devices: false,
-        truncate_bluetooth_name: false,
+        truncate_device_name: false,
         battery_prefix_name: false,
         notify_low_battery: None,
         notify_reconnection: false,
@@ -93,7 +93,7 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     let show_disconnected_devices = setting_section.get("show_disconnected_devices")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
 
-    let truncate_bluetooth_name = setting_section.get("truncate_bluetooth_name")
+    let truncate_device_name = setting_section.get("truncate_device_name")
         .map_or(false, |v| v.trim().to_lowercase() == "true");
 
     let battery_prefix_name = setting_section.get("battery_prefix_name")
@@ -159,7 +159,7 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         update_interval,
         icon,
         show_disconnected_devices,
-        truncate_bluetooth_name,
+        truncate_device_name,
         battery_prefix_name,
         notify_low_battery,
         notify_reconnection,
