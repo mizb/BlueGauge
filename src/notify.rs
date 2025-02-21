@@ -1,5 +1,5 @@
-use tauri_winrt_notification::*;
 use anyhow::{Context, Result};
+use tauri_winrt_notification::*;
 
 // HKEY_CLASSES_ROOT\AppUserModelId\Windows.SystemToast.BthQuickPair
 const BLUETOOTH_APP_ID: &str = "Windows.SystemToast.BthQuickPair";

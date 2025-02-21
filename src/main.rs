@@ -2,13 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bluetooth;
-mod systray;
 mod config;
-mod notify;
 mod language;
+mod notify;
 mod startup;
+mod systray;
 
-use crate::{systray::show_systray, notify::notify};
+use crate::{notify::notify, systray::show_systray};
 
 #[tokio::main]
 async fn main() {
