@@ -12,7 +12,8 @@ use crate::{notify::notify, systray::show_systray};
 
 #[tokio::main]
 async fn main() {
-    if let Err(err) = show_systray().await {
-        notify("BlueGauge", &err.to_string(), false).expect("Failed to show toast notification");
-    }
+    show_systray()
+        .await
+        .inspect_err(|e| notify("BlueGauge", &e.to_string(), false))
+        .expect("Failed to show systray");
 }

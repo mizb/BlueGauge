@@ -20,11 +20,11 @@ pub fn set_startup(enabled: bool) -> Result<()> {
         let exe_path = get_exe_path()?;
         run_key
             .set_value("CapsGlow", &exe_path)
-            .context("Failed to set the autostart registry key")?;
+            .with_context(|| "Failed to set the autostart registry key")?;
     } else {
         run_key
             .delete_value("CapsGlow")
-            .context("Failed to delete the autostart registry key")?;
+            .with_context(|| "Failed to delete the autostart registry key")?;
     }
 
     Ok(())
@@ -42,6 +42,6 @@ pub fn get_startup_status() -> Result<bool> {
             Ok(value == exe_path)
         }
         Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(anyhow::Error::new(e).context("Failed to read the autostart registry key")),
+        Err(e) => Err(anyhow!("Failed to get the autostart registry key - {e}")),
     }
 }

@@ -2,16 +2,16 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use glob::glob;
+// use glob::glob;
 use ini::Ini;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Config {
     pub update_interval: u64,
     pub show_disconnected_devices: bool,
     pub truncate_device_name: bool,
     pub battery_prefix_name: bool,
-    pub icon: Option<ShowIcon>,
+    // pub icon: Option<ShowIcon>,
     pub notify_mute: bool,
     pub notify_low_battery: Option<u8>,
     pub notify_reconnection: bool,
@@ -20,16 +20,16 @@ pub struct Config {
     pub notify_remove_devices: bool,
 }
 
-#[derive(Clone)]
-pub enum ShowIcon {
-    Logo(PathBuf), // logo.png
-    Font(PathBuf), // Font(*.ttf)
-    Png(Vec<(PathBuf, u8)>),
-    None,
-}
+// #[derive(Clone, Debug)]
+// pub enum ShowIcon {
+//     Logo(PathBuf), // logo.png
+//     Font(PathBuf), // Font(*.ttf)
+//     Png(Vec<(PathBuf, u8)>),
+//     None,
+// }
 
 pub fn ini() -> Result<(Config, PathBuf)> {
-    let exe_path = env::current_exe().context("Failed to get BlueGauge.exe Path")?;
+    let exe_path = env::current_exe().with_context(|| "Failed to get BlueGauge.exe Path")?;
     let exe_dir = exe_path
         .parent()
         .ok_or(anyhow!("Failed to get BlueGauge.exe parent directory"))?;
@@ -60,11 +60,11 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         .set("notify_mute", "false");
 
     ini.write_to_file(&ini_path)
-        .context("Failed to create config.ini")?;
+        .with_context(|| "Failed to create config.ini")?;
 
     let config = Config {
         update_interval: 30,
-        icon: None,
+        // icon: None,
         show_disconnected_devices: false,
         truncate_device_name: false,
         battery_prefix_name: false,
@@ -79,15 +79,15 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     Ok((config, ini_path))
 }
 
-fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
+fn read_ini(_exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     let ini = Ini::load_from_file(&ini_path)
-        .context("Failed to load config.ini in BlueGauge.exe directory")?;
+        .with_context(|| "Failed to load config.ini in BlueGauge.exe directory")?;
     let setting_section = ini
         .section(Some("Settings"))
-        .context("Failed to get 'Settings' Section")?;
+        .with_context(|| "Failed to get 'Settings' Section")?;
     let notifications_section = ini
         .section(Some("Notifications"))
-        .context("Failed to get 'Notifications' Section")?;
+        .with_context(|| "Failed to get 'Notifications' Section")?;
 
     let update_interval = setting_section
         .get("update_interval")
@@ -97,54 +97,54 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
 
     let show_disconnected_devices = setting_section
         .get("show_disconnected_devices")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
 
     let truncate_device_name = setting_section
         .get("truncate_device_name")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
 
     let battery_prefix_name = setting_section
         .get("battery_prefix_name")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
 
-    let icon = setting_section
-        .get("icon")
-        .map(|v| match v.trim().to_lowercase().as_str() {
-            "logo" => {
-                let logo_path = exe_dir.join("logo.png");
-                if logo_path.is_file() {
-                    ShowIcon::Logo(exe_dir.join("logo.png"))
-                } else {
-                    ShowIcon::None
-                }
-            }
-            "font" => {
-                let font_path = exe_dir.join("font.ttf");
-                if font_path.is_file() {
-                    ShowIcon::Font(exe_dir.join("font.ttf"))
-                } else {
-                    ShowIcon::None
-                }
-            }
-            "battery_png" => {
-                let battery_indicator_images = glob("*.png")
-                    .unwrap()
-                    .filter_map(Result::ok)
-                    .filter_map(|path| {
-                        path.file_stem()
-                            .and_then(|name| name.to_string_lossy().trim().parse::<u8>().ok())
-                            .filter(|&battery| battery <= 100)
-                            .map(|battery| (path, battery))
-                    })
-                    .collect::<Vec<_>>();
-                if battery_indicator_images.is_empty() {
-                    ShowIcon::None
-                } else {
-                    ShowIcon::Png(battery_indicator_images)
-                }
-            }
-            _ => ShowIcon::None,
-        });
+    // let icon = setting_section
+    //     .get("icon")
+    //     .map(|v| match v.trim().to_lowercase().as_str() {
+    //         "logo" => {
+    //             let logo_path = exe_dir.join("logo.png");
+    //             if logo_path.is_file() {
+    //                 ShowIcon::Logo(exe_dir.join("logo.png"))
+    //             } else {
+    //                 ShowIcon::None
+    //             }
+    //         }
+    //         "font" => {
+    //             let font_path = exe_dir.join("font.ttf");
+    //             if font_path.is_file() {
+    //                 ShowIcon::Font(exe_dir.join("font.ttf"))
+    //             } else {
+    //                 ShowIcon::None
+    //             }
+    //         }
+    //         "battery_png" => {
+    //             let battery_indicator_images = glob("*.png")
+    //                 .unwrap()
+    //                 .filter_map(Result::ok)
+    //                 .filter_map(|path| {
+    //                     path.file_stem()
+    //                         .and_then(|name| name.to_string_lossy().trim().parse::<u8>().ok())
+    //                         .filter(|&battery| battery <= 100)
+    //                         .map(|battery| (path, battery))
+    //                 })
+    //                 .collect::<Vec<_>>();
+    //             if battery_indicator_images.is_empty() {
+    //                 ShowIcon::None
+    //             } else {
+    //                 ShowIcon::Png(battery_indicator_images)
+    //             }
+    //         }
+    //         _ => ShowIcon::None,
+    //     });
 
     let notify_low_battery = notifications_section
         .get("notify_low_battery")
@@ -154,23 +154,23 @@ fn read_ini(exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
 
     let notify_reconnection = notifications_section
         .get("notify_reconnection")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
     let notify_disconnection = notifications_section
         .get("notify_disconnection")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
     let notify_added_devices = notifications_section
         .get("notify_added_devices")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
     let notify_remove_devices = notifications_section
         .get("notify_remove_devices")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
     let notify_mute = notifications_section
         .get("notify_mute")
-        .map_or(false, |v| v.trim().to_lowercase() == "true");
+        .is_some_and(|v| v.trim().to_lowercase() == "true");
 
     let config = Config {
         update_interval,
-        icon,
+        // icon,
         show_disconnected_devices,
         truncate_device_name,
         battery_prefix_name,

@@ -5,9 +5,9 @@ edition = "2024"
 authors = ["iKineticate <https://github.com/iKineticate>"]
 
 [dependencies]
-tray-icon = "0.19.2"
+tray-icon = "0.20.0"
 image = "0.25"
-tao = "0.31.1"
+tao = "0.32.8"
 scalefs_windowspnp = { path = "libs/scalefs_windowspnp" }
 anyhow = "1.0.95"
 tokio = { version = "1.43.0", features = ["full"] }
@@ -18,7 +18,7 @@ tauri-winrt-notification = "0.7.0"
 winreg = "0.55"
 
 [dependencies.windows]
-version = "0.59.0"
+version = "0.61.1"
 features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_GenericAttributeProfile",

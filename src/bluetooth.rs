@@ -42,15 +42,15 @@ async fn find_bt_devices() -> Result<Vec<BluetoothDevice>> {
     let bt_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
 
     let bt_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&bt_aqs_filter)?
-        .await
-        .context("Faled to find Bluetooth Classic from all devices")?;
+        .get()
+        .with_context(|| "Faled to find Bluetooth Classic from all devices")?;
 
     let bt_devices_futures = bt_devices_info_collection
         .into_iter()
         .map(|device_info| async move {
             BluetoothDevice::FromIdAsync(&device_info.Id().ok()?)
                 .ok()?
-                .await
+                .get()
                 .ok()
         })
         .collect::<Vec<_>>();
@@ -58,7 +58,7 @@ async fn find_bt_devices() -> Result<Vec<BluetoothDevice>> {
     let devices: Vec<_> = join_all(bt_devices_futures)
         .await
         .into_iter()
-        .filter_map(|x| x)
+        .flatten()
         .collect::<Vec<_>>();
 
     Ok(devices)
@@ -68,15 +68,16 @@ async fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
     let ble_aqs_filter = BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)?;
 
     let ble_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&ble_aqs_filter)?
-        .await
-        .context("Faled to find Bluetooth Low Energy from all devices")?;
+        // .await
+        .get()
+        .with_context(|| "Faled to find Bluetooth Low Energy from all devices")?;
 
     let ble_devices_futures = ble_devices_info_collection
         .into_iter()
         .map(|device_info| async move {
             BluetoothLEDevice::FromIdAsync(&device_info.Id().ok()?)
                 .ok()?
-                .await
+                .get()
                 .ok()
         })
         .collect::<Vec<_>>();
@@ -84,7 +85,7 @@ async fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
     let devices: Vec<_> = join_all(ble_devices_futures)
         .await
         .into_iter()
-        .filter_map(|x| x)
+        .flatten()
         .collect::<Vec<_>>();
 
     Ok(devices)
@@ -129,9 +130,7 @@ async fn get_bt_info(bt_devices: Vec<BluetoothDevice>) -> Result<HashSet<Bluetoo
 
 async fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<BluetoothInfo>> {
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
-    let futures = ble_devices
-        .iter()
-        .map(|ble_device| process_ble_device(ble_device));
+    let futures = ble_devices.iter().map(process_ble_device);
     let results: Vec<Result<BluetoothInfo>> = join_all(futures).await;
     for result in results {
         match result {
@@ -168,13 +167,13 @@ fn process_bt_device(
 
 async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
     let name = ble_device.Name()?.to_string();
-    let battery = get_ble_battery_level(&ble_device)
+    let battery = get_ble_battery_level(ble_device)
         .await
         .map_err(|e| anyhow!("Failed to get BLE:'{name}' Battery Level -> {e}"))?;
     let status = ble_device
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
-        .context(format!("Failed to get Bluetooth connected status: {name}"))?;
+        .with_context(|| format!("Failed to get Bluetooth connected status: {name}"))?;
     let id = ble_device.DeviceId()?.to_string();
     Ok(BluetoothInfo {
         name,
@@ -190,9 +189,9 @@ async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
 
     let battery_services = ble_device
         .GetGattServicesForUuidAsync(battery_services_uuid)?
-        .await?
+        .get()?
         .Services()
-        .context("Failed to get BLE Services")?;
+        .with_context(|| "Failed to get BLE Services")?;
 
     let battery_service = battery_services
         .into_iter()
@@ -201,9 +200,9 @@ async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
 
     let battery_gatt_chars = battery_service
         .GetCharacteristicsForUuidAsync(battery_level_uuid)?
-        .await?
+        .get()?
         .Characteristics()
-        .context("Failed to get BLE Gatt Characteristics")?;
+        .with_context(|| "Failed to get BLE Gatt Characteristics")?;
 
     let battery_gatt_char = battery_gatt_chars
         .into_iter()
@@ -212,7 +211,7 @@ async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
 
     let battery_level = match battery_gatt_char.Uuid()? == battery_level_uuid {
         true => {
-            let buffer = battery_gatt_char.ReadValueAsync()?.await?.Value()?;
+            let buffer = battery_gatt_char.ReadValueAsync()?.get()?.Value()?;
             let reader = DataReader::FromBuffer(&buffer)?;
             reader.ReadByte()
         }
@@ -225,7 +224,7 @@ async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
         )),
     };
 
-    return battery_level.map_err(|e| anyhow!(e));
+    battery_level.map_err(|e| anyhow!(e))
 }
 
 async fn get_pnp_bt_devices_info() -> Result<Vec<(String, u8)>> {
