@@ -218,7 +218,11 @@ async fn loop_systray() -> Result<()> {
                     } else {
                         Some(low_battery)
                     };
-                    write_ini_settings(&ini_path, "notify_low_battery", low_battery.to_string());
+                    write_ini_notifications(
+                        &ini_path,
+                        "notify_low_battery",
+                        low_battery.to_string(),
+                    );
                     if let Err(e) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
                         eprintln!("{e}")
                     } else {
