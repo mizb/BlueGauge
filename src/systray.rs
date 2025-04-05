@@ -190,7 +190,6 @@ async fn loop_systray() -> Result<()> {
                 std::process::exit(0x0100);
             }
 
-            // if let Ok(mut config) = config.try_lock() {
             let menu_id = menu_event.id().as_ref();
             // 如菜单ID可以格式化为u64，则菜单事件对应的是更新频率的设置
             if let Ok(update_interval) = menu_id.trim().parse::<u64>() {
@@ -198,11 +197,10 @@ async fn loop_systray() -> Result<()> {
                     .update_interval
                     .store(update_interval, Ordering::SeqCst);
                 write_ini_settings(&ini_path, "update_interval", update_interval.to_string());
-                if let Err(e) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                    eprintln!("{e}")
-                } else {
-                    update_menu_event.store(true, Ordering::Relaxed);
-                }
+                let _ = proxy_menu
+                    .send_event(TrayEvent::ForwardUpdate)
+                    .inspect(|_| update_menu_event.store(true, Ordering::Relaxed))
+                    .inspect_err(|e| eprintln!("{e}"));
             // 如菜单ID可以格式化为f64，则菜单事件对应的是设备低电量的设置
             } else if let Ok(low_battery) = menu_id.trim().parse::<f64>() {
                 let low_battery = (low_battery * 100.0).floor().clamp(0.0, 99.0) as u8;
@@ -210,8 +208,8 @@ async fn loop_systray() -> Result<()> {
                 write_ini_notifications(&ini_path, "notify_low_battery", low_battery.to_string());
                 let _ = proxy_menu
                     .send_event(TrayEvent::ForwardUpdate)
-                    .inspect_err(|e| eprintln!("{e}"))
-                    .inspect(|_| update_menu_event.store(true, Ordering::Relaxed));
+                    .inspect(|_| update_menu_event.store(true, Ordering::Relaxed))
+                    .inspect_err(|e| eprintln!("{e}"));
             } else {
                 match menu_id {
                     "notify_mute" => {
@@ -276,11 +274,10 @@ async fn loop_systray() -> Result<()> {
                                 .load(Ordering::SeqCst)
                                 .to_string(),
                         );
-                        if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                            eprintln!("{err}")
-                        } else {
-                            update_menu_event.store(true, Ordering::Relaxed);
-                        }
+                        let _ = proxy_menu
+                            .send_event(TrayEvent::ForwardUpdate)
+                            .inspect(|_| update_menu_event.store(true, Ordering::Relaxed))
+                            .inspect_err(|e| eprintln!("{e}"));
                     }
                     "truncate_device_name" => {
                         config.truncate_device_name.fetch_not(Ordering::SeqCst);
@@ -292,11 +289,10 @@ async fn loop_systray() -> Result<()> {
                                 .load(Ordering::SeqCst)
                                 .to_string(),
                         );
-                        if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                            eprintln!("{err}")
-                        } else {
-                            update_menu_event.store(true, Ordering::Relaxed);
-                        }
+                        let _ = proxy_menu
+                            .send_event(TrayEvent::ForwardUpdate)
+                            .inspect(|_| update_menu_event.store(true, Ordering::Relaxed))
+                            .inspect_err(|e| eprintln!("{e}"));
                     }
                     "battery_prefix_name" => {
                         config.battery_prefix_name.fetch_not(Ordering::SeqCst);
@@ -308,11 +304,10 @@ async fn loop_systray() -> Result<()> {
                                 .load(Ordering::SeqCst)
                                 .to_string(),
                         );
-                        if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                            eprintln!("{err}")
-                        } else {
-                            update_menu_event.store(true, Ordering::Relaxed);
-                        }
+                        let _ = proxy_menu
+                            .send_event(TrayEvent::ForwardUpdate)
+                            .inspect(|_| update_menu_event.store(true, Ordering::Relaxed))
+                            .inspect_err(|e| eprintln!("{e}"));
                     }
                     "startup" => {
                         let should_startup =
@@ -322,7 +317,6 @@ async fn loop_systray() -> Result<()> {
                     _ => (),
                 }
             }
-            // }
         }
     });
 
