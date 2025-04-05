@@ -38,31 +38,28 @@ pub async fn show_systray() -> Result<()> {
 async fn loop_systray() -> Result<()> {
     let (ini, ini_path) = ini()?;
 
-    let (tooltip, menu_devices, blue_info) =
-        get_bluetooth_tray_info(Arc::new(Mutex::new(ini.clone()))).await?;
+    let ini = Arc::new(ini);
 
-    let mut low_battery_devices = HashMap::<String, bool>::new(); // HashMap<bluetooth_id: String, notified: bool>
+    let (tooltip, menu_devices, blue_info) = get_bluetooth_tray_info(Arc::clone(&ini)).await?;
 
+    // (低电量设备ID, 是否已通知状态)
+    let mut low_battery_devices = HashMap::<String, bool>::new();
+
+    let low_battery = ini.notify_low_battery.load(Ordering::Relaxed);
     let messages = blue_info
         .iter()
-        .filter_map(|device| {
-            ini.notify_low_battery
-                .filter(|&low_battery| device.battery < low_battery && device.status)
-                .map(|_| {
-                    low_battery_devices.insert(device.name.clone(), true);
-                    format!("{}: {}% battery remaining", device.name, device.battery)
-                })
+        .filter(|&device| (low_battery > 0 && (device.battery < low_battery) && device.status))
+        .map(|device| {
+            low_battery_devices.insert(device.name.clone(), true);
+            format!("{}: {}% battery remaining", device.name, device.battery)
         })
         .collect::<Vec<String>>()
         .join("\n");
 
     if !messages.is_empty() && !low_battery_devices.is_empty() {
-        let title = format!(
-            "Bluetooth Battery Below {}%",
-            ini.notify_low_battery.unwrap_or(15)
-        );
+        let title = format!("Bluetooth Battery Below {low_battery}%");
         let text = messages.trim();
-        let mute = ini.notify_mute;
+        let mute = ini.notify_mute.load(Ordering::Relaxed);
         notify(&title, text, mute);
     }
 
@@ -76,7 +73,7 @@ async fn loop_systray() -> Result<()> {
         .with_context(|| "Failed to build tray")?;
     let menu_channel = MenuEvent::receiver();
 
-    let config = Arc::new(Mutex::new(ini));
+    let config = Arc::new(ini);
     let tooltip = Arc::new(Mutex::new(tooltip));
     let menu_devices = Arc::new(Mutex::new(menu_devices));
     let blue_info = Arc::new(Mutex::new(blue_info));
@@ -99,7 +96,7 @@ async fn loop_systray() -> Result<()> {
 
         async move {
             loop {
-                let update_interval = config.lock().map_or(30, |c| c.update_interval);
+                let update_interval = config.update_interval.load(Ordering::Relaxed);
 
                 std::thread::sleep(Duration::from_secs(update_interval));
 
@@ -107,7 +104,7 @@ async fn loop_systray() -> Result<()> {
                     continue;
                 }
 
-                if let Err(e) = update_tray(
+                let _is_update = update_tray(
                     Arc::clone(&config),
                     Arc::clone(&tooltip),
                     Arc::clone(&menu_devices),
@@ -117,9 +114,7 @@ async fn loop_systray() -> Result<()> {
                     &proxy,
                 )
                 .await
-                {
-                    eprintln!("Failed to update tray: {e}");
-                }
+                .inspect_err(|e| eprintln!("Failed to update tray: {e}"));
             }
         }
     });
@@ -136,13 +131,14 @@ async fn loop_systray() -> Result<()> {
         if let tao::event::Event::UserEvent(tray_event) = event {
             match tray_event {
                 TrayEvent::SetTooltip => {
-                    if let Ok(t) = tooltip.lock() {
-                        tray_icon
-                            .set_tooltip(Some(t.join("\n")))
-                            .expect("Failed to update tray tooltip");
-                    } else {
-                        println!("Failed to acquire 'tooltip' lock")
-                    }
+                    let _unused = tooltip
+                        .lock()
+                        .inspect(|t| {
+                            tray_icon
+                                .set_tooltip(Some(t.join("\n")))
+                                .expect("Failed to update tray tooltip")
+                        })
+                        .inspect_err(|e| eprintln!("Failed to acquire 'tooltip' lock - {e}"));
                 }
                 TrayEvent::SetTrayInfo => {
                     if let Ok(t) = tooltip.lock() {
@@ -153,16 +149,11 @@ async fn loop_systray() -> Result<()> {
                         println!("Failed to acquire 'tooltip' lock")
                     }
 
-                    match (menu_devices.lock(), config.lock()) {
-                        (Ok(menu_devices), Ok(config)) => {
-                            if let Ok(tray_menu) = create_tray_menu(&menu_devices, &config) {
-                                tray_icon.set_menu(Some(Box::new(tray_menu)));
-                            } else {
-                                println!("Failed to update(set) tray menu")
-                            }
-                        }
-                        (_, _) => println!("Failed to acquire 'menu_devices' or 'config' lock"),
-                    }
+                    let config = Arc::clone(&config);
+                    let _ = menu_devices.lock().map(|menu_devices| {
+                        create_tray_menu(&menu_devices, &config)
+                            .inspect(|m| tray_icon.set_menu(Some(Box::new(m.clone()))))
+                    });
                 }
                 TrayEvent::ForwardUpdate => {
                     let config = Arc::clone(&config);
@@ -199,125 +190,139 @@ async fn loop_systray() -> Result<()> {
                 std::process::exit(0x0100);
             }
 
-            if let Ok(mut config) = config.try_lock() {
-                let menu_id = menu_event.id().as_ref();
-                // 如菜单ID可以格式化为u64，则菜单事件对应的是更新频率的设置
-                if let Ok(update_interval) = menu_id.trim().parse::<u64>() {
-                    config.update_interval = update_interval;
-                    write_ini_settings(&ini_path, "update_interval", update_interval.to_string());
-                    if let Err(e) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                        eprintln!("{e}")
-                    } else {
-                        update_menu_event.store(true, Ordering::Relaxed);
-                    }
-                // 如菜单ID可以格式化为f64，则菜单事件对应的是设备低电量的设置
-                } else if let Ok(low_battery) = menu_id.trim().parse::<f64>() {
-                    let low_battery = (low_battery * 100.0).floor().clamp(0.0, 99.0) as u8;
-                    config.notify_low_battery = if low_battery == 0 {
-                        None
-                    } else {
-                        Some(low_battery)
-                    };
-                    write_ini_notifications(
-                        &ini_path,
-                        "notify_low_battery",
-                        low_battery.to_string(),
-                    );
-                    if let Err(e) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                        eprintln!("{e}")
-                    } else {
-                        update_menu_event.store(true, Ordering::Relaxed);
-                    }
+            // if let Ok(mut config) = config.try_lock() {
+            let menu_id = menu_event.id().as_ref();
+            // 如菜单ID可以格式化为u64，则菜单事件对应的是更新频率的设置
+            if let Ok(update_interval) = menu_id.trim().parse::<u64>() {
+                config
+                    .update_interval
+                    .store(update_interval, Ordering::SeqCst);
+                write_ini_settings(&ini_path, "update_interval", update_interval.to_string());
+                if let Err(e) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
+                    eprintln!("{e}")
                 } else {
-                    match menu_id {
-                        "notify_mute" => {
-                            config.notify_mute = !config.notify_mute;
-                            write_ini_notifications(
-                                &ini_path,
-                                menu_event.id().as_ref(),
-                                config.notify_mute.to_string(),
-                            );
-                        }
-                        "notify_reconnection" => {
-                            config.notify_reconnection = !config.notify_reconnection;
-                            write_ini_notifications(
-                                &ini_path,
-                                menu_event.id().as_ref(),
-                                config.notify_reconnection.to_string(),
-                            );
-                        }
-                        "notify_disconnection" => {
-                            config.notify_disconnection = !config.notify_disconnection;
-                            write_ini_notifications(
-                                &ini_path,
-                                menu_event.id().as_ref(),
-                                config.notify_disconnection.to_string(),
-                            );
-                        }
-                        "notify_added_devices" => {
-                            config.notify_added_devices = !config.notify_added_devices;
-                            write_ini_notifications(
-                                &ini_path,
-                                menu_event.id().as_ref(),
-                                config.notify_added_devices.to_string(),
-                            );
-                        }
-                        "notify_remove_devices" => {
-                            config.notify_remove_devices = !config.notify_remove_devices;
-                            write_ini_notifications(
-                                &ini_path,
-                                menu_event.id().as_ref(),
-                                config.notify_remove_devices.to_string(),
-                            );
-                        }
-                        "show_disconnected_devices" => {
-                            config.show_disconnected_devices = !config.show_disconnected_devices;
-                            write_ini_settings(
-                                &ini_path,
-                                "show_disconnected_devices",
-                                config.show_disconnected_devices.to_string(),
-                            );
-                            if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                                eprintln!("{err}")
-                            } else {
-                                update_menu_event.store(true, Ordering::Relaxed);
-                            }
-                        }
-                        "truncate_device_name" => {
-                            config.truncate_device_name = !config.truncate_device_name;
-                            write_ini_settings(
-                                &ini_path,
-                                "truncate_device_name",
-                                config.truncate_device_name.to_string(),
-                            );
-                            if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                                eprintln!("{err}")
-                            } else {
-                                update_menu_event.store(true, Ordering::Relaxed);
-                            }
-                        }
-                        "battery_prefix_name" => {
-                            config.battery_prefix_name = !config.battery_prefix_name;
-                            write_ini_settings(
-                                &ini_path,
-                                "battery_prefix_name",
-                                config.battery_prefix_name.to_string(),
-                            );
-                            if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
-                                eprintln!("{err}")
-                            } else {
-                                update_menu_event.store(true, Ordering::Relaxed);
-                            }
-                        }
-                        "startup" => {
-                            let should_startup =
-                                !get_startup_status().expect("Failed to get startup status");
-                            set_startup(should_startup).expect("Failed to set Launch at Startup")
-                        }
-                        _ => (),
+                    update_menu_event.store(true, Ordering::Relaxed);
+                }
+            // 如菜单ID可以格式化为f64，则菜单事件对应的是设备低电量的设置
+            } else if let Ok(low_battery) = menu_id.trim().parse::<f64>() {
+                let low_battery = (low_battery * 100.0).floor().clamp(0.0, 99.0) as u8;
+                config.notify_low_battery.store(low_battery, Ordering::Relaxed);
+                write_ini_notifications(&ini_path, "notify_low_battery", low_battery.to_string());
+                let _ = proxy_menu
+                    .send_event(TrayEvent::ForwardUpdate)
+                    .inspect_err(|e| eprintln!("{e}"))
+                    .inspect(|_| update_menu_event.store(true, Ordering::Relaxed));
+            } else {
+                match menu_id {
+                    "notify_mute" => {
+                        config.notify_mute.fetch_not(Ordering::SeqCst);
+                        write_ini_notifications(
+                            &ini_path,
+                            menu_event.id().as_ref(),
+                            config.notify_mute.load(Ordering::SeqCst).to_string(),
+                        );
                     }
+                    "notify_reconnection" => {
+                        config.notify_reconnection.fetch_not(Ordering::SeqCst);
+                        write_ini_notifications(
+                            &ini_path,
+                            menu_event.id().as_ref(),
+                            config
+                                .notify_reconnection
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                    }
+                    "notify_disconnection" => {
+                        config.notify_disconnection.fetch_not(Ordering::SeqCst);
+                        write_ini_notifications(
+                            &ini_path,
+                            menu_event.id().as_ref(),
+                            config
+                                .notify_disconnection
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                    }
+                    "notify_added_devices" => {
+                        config.notify_added_devices.fetch_not(Ordering::SeqCst);
+                        write_ini_notifications(
+                            &ini_path,
+                            menu_event.id().as_ref(),
+                            config
+                                .notify_added_devices
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                    }
+                    "notify_remove_devices" => {
+                        config.notify_remove_devices.fetch_not(Ordering::SeqCst);
+                        write_ini_notifications(
+                            &ini_path,
+                            menu_event.id().as_ref(),
+                            config
+                                .notify_remove_devices
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                    }
+                    "show_disconnected_devices" => {
+                        config.show_disconnected_devices.fetch_not(Ordering::SeqCst);
+                        write_ini_settings(
+                            &ini_path,
+                            "show_disconnected_devices",
+                            config
+                                .show_disconnected_devices
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                        if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
+                            eprintln!("{err}")
+                        } else {
+                            update_menu_event.store(true, Ordering::Relaxed);
+                        }
+                    }
+                    "truncate_device_name" => {
+                        config.truncate_device_name.fetch_not(Ordering::SeqCst);
+                        write_ini_settings(
+                            &ini_path,
+                            "truncate_device_name",
+                            config
+                                .truncate_device_name
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                        if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
+                            eprintln!("{err}")
+                        } else {
+                            update_menu_event.store(true, Ordering::Relaxed);
+                        }
+                    }
+                    "battery_prefix_name" => {
+                        config.battery_prefix_name.fetch_not(Ordering::SeqCst);
+                        write_ini_settings(
+                            &ini_path,
+                            "battery_prefix_name",
+                            config
+                                .battery_prefix_name
+                                .load(Ordering::SeqCst)
+                                .to_string(),
+                        );
+                        if let Err(err) = proxy_menu.send_event(TrayEvent::ForwardUpdate) {
+                            eprintln!("{err}")
+                        } else {
+                            update_menu_event.store(true, Ordering::Relaxed);
+                        }
+                    }
+                    "startup" => {
+                        let should_startup =
+                            !get_startup_status().expect("Failed to get startup status");
+                        set_startup(should_startup).expect("Failed to set Launch at Startup")
+                    }
+                    _ => (),
                 }
             }
+            // }
         }
     });
 
@@ -338,7 +343,7 @@ fn load_icon(icon_data: &[u8]) -> Result<tray_icon::Icon> {
 }
 
 async fn update_tray(
-    config: Arc<Mutex<Config>>,
+    config: Arc<Config>,
     tooltip: Arc<Mutex<Vec<String>>>,
     menu_devices: Arc<Mutex<Vec<String>>>,
     blue_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
@@ -352,10 +357,7 @@ async fn update_tray(
     let (current_tooltip, current_menu_devices, current_blue_info) =
         get_bluetooth_tray_info(Arc::clone(&config)).await?;
 
-    let (config, mut original_tooltip, mut original_menu_devices, mut original_blue_info) = (
-        config
-            .try_lock()
-            .map_err(|_| anyhow!("Failed to acquire 'config' lock on task"))?,
+    let (mut original_tooltip, mut original_menu_devices, mut original_blue_info) = (
         tooltip
             .try_lock()
             .map_err(|_| anyhow!("Failed to acquire 'tooltip' lock on task,"))?,
@@ -409,7 +411,8 @@ async fn update_tray(
     );
 
     if !updated_battery_from_current.is_empty() {
-        if let Some(set_battery) = config.notify_low_battery {
+        let set_battery = config.notify_low_battery.load(Ordering::Relaxed);
+        if set_battery > 0 {
             let mut messages = String::new();
 
             let mut low_battery_devices = low_battery_devices
@@ -437,7 +440,7 @@ async fn update_tray(
             if !messages.is_empty() {
                 let title = &format!("{} {set_battery}%", loc.bluetooth_battery_below);
                 let text = &messages.trim();
-                let mute = config.notify_mute;
+                let mute = config.notify_mute.load(Ordering::Relaxed);
                 notify(title, text, mute);
             }
         }
@@ -449,9 +452,14 @@ async fn update_tray(
         notify_added_devices,
         notify_remove_devices,
         ..
-    } = *config;
+    } = &*config;
+
+    let mute = config.notify_mute.load(Ordering::Relaxed);
 
     if !updated_status_from_current.is_empty() {
+        let notify_reconnection = notify_reconnection.load(Ordering::Relaxed);
+        let notify_disconnection = notify_disconnection.load(Ordering::Relaxed);
+
         let [reconnection, disconnection] = updated_status_from_current.iter().fold(
             [String::new(), String::new()],
             |[mut reconnection, mut disconnection], current_blue_info| {
@@ -475,18 +483,14 @@ async fn update_tray(
         );
         if notify_reconnection && !reconnection.is_empty() {
             // 重新连接
-            notify(
-                loc.bluetooth_device_reconnected,
-                reconnection.trim(),
-                config.notify_mute,
-            );
+            notify(loc.bluetooth_device_reconnected, reconnection.trim(), mute);
         }
         if notify_disconnection && !disconnection.is_empty() {
             // 断开连接
             notify(
                 loc.bluetooth_device_disconnected,
                 disconnection.trim(),
-                config.notify_mute,
+                mute,
             );
         }
     }
@@ -497,17 +501,13 @@ async fn update_tray(
         .collect::<HashSet<_>>();
     if !added_devices.is_empty() {
         update_menu_event.store(true, Ordering::Relaxed);
-        if notify_added_devices {
+        if notify_added_devices.load(Ordering::Relaxed) {
             let messeges = added_devices.into_iter().fold(String::new(), |mut acc, b| {
                 let name = format!("{}: {}\n", loc.device_name, b.name);
                 acc.push_str(&name);
                 acc
             });
-            notify(
-                loc.new_bluetooth_device_connected,
-                messeges.trim(),
-                config.notify_mute,
-            );
+            notify(loc.new_bluetooth_device_connected, messeges.trim(), mute);
         }
     }
 
@@ -517,7 +517,7 @@ async fn update_tray(
         .collect::<HashSet<_>>();
     if !remove_devices.is_empty() {
         update_menu_event.store(true, Ordering::Relaxed);
-        if notify_remove_devices {
+        if notify_remove_devices.load(Ordering::Relaxed) {
             let messeges = remove_devices
                 .into_iter()
                 .fold(String::new(), |mut acc, b| {
@@ -525,11 +525,7 @@ async fn update_tray(
                     acc.push_str(&name);
                     acc
                 });
-            notify(
-                loc.bluetooth_device_removed,
-                messeges.trim(),
-                config.notify_mute,
-            );
+            notify(loc.bluetooth_device_removed, messeges.trim(), mute);
         }
     }
 
@@ -552,7 +548,7 @@ async fn update_tray(
 }
 
 async fn get_bluetooth_tray_info(
-    config: Arc<Mutex<Config>>,
+    config: Arc<Config>,
 ) -> Result<(Vec<String>, Vec<String>, HashSet<BluetoothInfo>)> {
     let bluetooth_devices = find_bluetooth_devices()
         .await
@@ -560,9 +556,9 @@ async fn get_bluetooth_tray_info(
     let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
         .await
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
-    let show_disconnected_devices = config.lock().is_ok_and(|c| c.show_disconnected_devices);
-    let truncate_device_name = config.lock().is_ok_and(|c| c.truncate_device_name);
-    let battery_prefix_name = config.lock().is_ok_and(|c| c.battery_prefix_name);
+    let show_disconnected_devices = config.show_disconnected_devices.load(Ordering::Relaxed);
+    let truncate_device_name = config.truncate_device_name.load(Ordering::Relaxed);
+    let battery_prefix_name = config.battery_prefix_name.load(Ordering::Relaxed);
     let (tooltip, menu_devices) = convert_tray_info(
         &bluetooth_devices_info,
         show_disconnected_devices,
@@ -630,7 +626,7 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
         "show_disconnected_devices",
         loc.show_disconnected_devices,
         true,
-        config.show_disconnected_devices,
+        config.show_disconnected_devices.load(Ordering::Relaxed),
         None,
     );
 
@@ -638,7 +634,7 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
         "truncate_device_name",
         loc.truncate_device_name,
         true,
-        config.truncate_device_name,
+        config.truncate_device_name.load(Ordering::Relaxed),
         None,
     );
 
@@ -646,42 +642,34 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
         "battery_prefix_name",
         loc.battery_prefix_name,
         true,
-        config.battery_prefix_name,
+        config.battery_prefix_name.load(Ordering::Relaxed),
         None,
     );
 
+    let update_interval = config.update_interval.load(Ordering::Relaxed);
     let update_items = &[
-        &CheckMenuItem::with_id("15", "15s", true, config.update_interval == 15, None)
+        &CheckMenuItem::with_id("15", "15s", true, update_interval == 15, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("30", "30s", true, update_interval == 30, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("60", "1min", true, update_interval == 60, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("300", "5min", true, update_interval == 300, None)
             as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("30", "30s", true, config.update_interval == 30, None)
+        &CheckMenuItem::with_id("600", "10min", true, update_interval == 600, None)
             as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("60", "1min", true, config.update_interval == 60, None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("300", "5min", true, config.update_interval == 300, None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("600", "10min", true, config.update_interval == 600, None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("1800", "30min", true, config.update_interval == 1800, None)
+        &CheckMenuItem::with_id("1800", "30min", true, update_interval == 1800, None)
             as &dyn IsMenuItem,
     ];
 
     let menu_update =
         Submenu::with_id_and_items("update", loc.update_interval, true, update_items)?;
 
-    let low_battery = config.notify_low_battery;
+    let low_battery = config.notify_low_battery.load(Ordering::Relaxed);
     let low_battery_items = &[
-        &CheckMenuItem::with_id("0.0", loc.none, true, low_battery.is_none(), None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("0.05", "5%", true, low_battery == Some(5), None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("0.1", "10%", true, low_battery == Some(10), None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("0.15", "15%", true, low_battery == Some(15), None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("0.2", "20%", true, low_battery == Some(20), None)
-            as &dyn IsMenuItem,
-        &CheckMenuItem::with_id("0.25", "25%", true, low_battery == Some(25), None)
-            as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.0", "-", true, low_battery == 0, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.05", "5%", true, low_battery == 5, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.1", "10%", true, low_battery == 10, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.15", "15%", true, low_battery == 15, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.2", "20%", true, low_battery == 20, None) as &dyn IsMenuItem,
+        &CheckMenuItem::with_id("0.25", "25%", true, low_battery == 25, None) as &dyn IsMenuItem,
     ];
     let notify_low_battery = Submenu::with_items(loc.notify_low_battery, true, low_battery_items)?;
 
@@ -690,7 +678,7 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
             "notify_mute",
             loc.notify_mute,
             true,
-            config.notify_mute,
+            config.notify_mute.load(Ordering::Relaxed),
             None,
         ) as &dyn IsMenuItem,
         &notify_low_battery as &dyn IsMenuItem,
@@ -698,28 +686,28 @@ fn create_tray_menu(menu_devices: &Vec<String>, config: &Config) -> Result<Menu>
             "notify_reconnection",
             loc.notify_reconnection,
             true,
-            config.notify_reconnection,
+            config.notify_reconnection.load(Ordering::Relaxed),
             None,
         ) as &dyn IsMenuItem,
         &CheckMenuItem::with_id(
             "notify_disconnection",
             loc.notify_disconnection,
             true,
-            config.notify_disconnection,
+            config.notify_disconnection.load(Ordering::Relaxed),
             None,
         ) as &dyn IsMenuItem,
         &CheckMenuItem::with_id(
             "notify_added_devices",
             loc.notify_added_devices,
             true,
-            config.notify_added_devices,
+            config.notify_added_devices.load(Ordering::Relaxed),
             None,
         ) as &dyn IsMenuItem,
         &CheckMenuItem::with_id(
             "notify_remove_devices",
             loc.notify_remove_devices,
             true,
-            config.notify_remove_devices,
+            config.notify_remove_devices.load(Ordering::Relaxed),
             None,
         ) as &dyn IsMenuItem,
     ];

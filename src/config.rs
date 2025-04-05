@@ -1,23 +1,39 @@
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64};
 
 use anyhow::{Context, Result, anyhow};
 // use glob::glob;
 use ini::Ini;
 
-#[derive(Clone, Debug)]
+// #[derive(Clone, Debug)]
+// pub struct Config {
+//     pub update_interval: u64,
+//     pub show_disconnected_devices: bool,
+//     pub truncate_device_name: bool,
+//     pub battery_prefix_name: bool,
+//     // pub icon: Option<ShowIcon>,
+//     pub notify_mute: bool,
+//     pub notify_low_battery: Option<u8>,
+//     pub notify_reconnection: bool,
+//     pub notify_disconnection: bool,
+//     pub notify_added_devices: bool,
+//     pub notify_remove_devices: bool,
+// }
+
+#[derive(Default, Debug)]
 pub struct Config {
-    pub update_interval: u64,
-    pub show_disconnected_devices: bool,
-    pub truncate_device_name: bool,
-    pub battery_prefix_name: bool,
+    pub update_interval: AtomicU64,
+    pub show_disconnected_devices: AtomicBool,
+    pub truncate_device_name: AtomicBool,
+    pub battery_prefix_name: AtomicBool,
     // pub icon: Option<ShowIcon>,
-    pub notify_mute: bool,
-    pub notify_low_battery: Option<u8>,
-    pub notify_reconnection: bool,
-    pub notify_disconnection: bool,
-    pub notify_added_devices: bool,
-    pub notify_remove_devices: bool,
+    pub notify_mute: AtomicBool,
+    pub notify_low_battery: AtomicU8,
+    pub notify_reconnection: AtomicBool,
+    pub notify_disconnection: AtomicBool,
+    pub notify_added_devices: AtomicBool,
+    pub notify_remove_devices: AtomicBool,
 }
 
 // #[derive(Clone, Debug)]
@@ -42,17 +58,22 @@ pub fn ini() -> Result<(Config, PathBuf)> {
 }
 
 fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
+    let config = Config {
+        update_interval: AtomicU64::new(30),
+        ..Default::default()
+    };
+
     let mut ini = Ini::new();
 
     ini.with_section(Some("Settings"))
-        .set("update_interval", "30") // 默认30（单位秒）
-        .set("icon", "none") // Value: none、logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
+        .set("update_interval", "30")
+        // .set("icon", "none") // Value: none、logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
         .set("show_disconnected_devices", "false")
         .set("truncate_device_name", "false")
         .set("battery_prefix_name", "false");
 
     ini.with_section(Some("Notifications"))
-        .set("notify_low_battery", "none") // Value：none、number（0~100，单位百分比）
+        .set("notify_low_battery", "0") // Value：none、number（0~100，单位百分比）
         .set("notify_reconnection", "false")
         .set("notify_disconnection", "false")
         .set("notify_added_devices", "false")
@@ -62,26 +83,13 @@ fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     ini.write_to_file(&ini_path)
         .with_context(|| "Failed to create config.ini")?;
 
-    let config = Config {
-        update_interval: 30,
-        // icon: None,
-        show_disconnected_devices: false,
-        truncate_device_name: false,
-        battery_prefix_name: false,
-        notify_low_battery: None,
-        notify_reconnection: false,
-        notify_disconnection: false,
-        notify_added_devices: false,
-        notify_remove_devices: false,
-        notify_mute: false,
-    };
-
     Ok((config, ini_path))
 }
 
 fn read_ini(_exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
     let ini = Ini::load_from_file(&ini_path)
         .with_context(|| "Failed to load config.ini in BlueGauge.exe directory")?;
+
     let setting_section = ini
         .section(Some("Settings"))
         .with_context(|| "Failed to get 'Settings' Section")?;
@@ -148,9 +156,9 @@ fn read_ini(_exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
 
     let notify_low_battery = notifications_section
         .get("notify_low_battery")
-        .filter(|v| !v.trim().is_empty() && v.trim().to_lowercase() != "none")
         .and_then(|v| v.trim().parse::<u8>().ok())
-        .filter(|&battery| battery <= 100);
+        .filter(|&battery| battery <= 100)
+        .unwrap_or(15);
 
     let notify_reconnection = notifications_section
         .get("notify_reconnection")
@@ -169,17 +177,17 @@ fn read_ini(_exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
         .is_some_and(|v| v.trim().to_lowercase() == "true");
 
     let config = Config {
-        update_interval,
+        update_interval: update_interval.into(),
         // icon,
-        show_disconnected_devices,
-        truncate_device_name,
-        battery_prefix_name,
-        notify_low_battery,
-        notify_reconnection,
-        notify_disconnection,
-        notify_added_devices,
-        notify_remove_devices,
-        notify_mute,
+        show_disconnected_devices: show_disconnected_devices.into(),
+        truncate_device_name: truncate_device_name.into(),
+        battery_prefix_name: battery_prefix_name.into(),
+        notify_low_battery: notify_low_battery.into(),
+        notify_reconnection: notify_reconnection.into(),
+        notify_disconnection: notify_disconnection.into(),
+        notify_added_devices: notify_added_devices.into(),
+        notify_remove_devices: notify_remove_devices.into(),
+        notify_mute: notify_mute.into(),
     };
 
     Ok((config, ini_path))
