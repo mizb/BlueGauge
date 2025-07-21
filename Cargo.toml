@@ -1,27 +1,26 @@
 [package]
 name = "BlueGauge"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 authors = ["iKineticate <https://github.com/iKineticate>"]
 
 [dependencies]
-tray-icon = "0.20.0"
-image = "0.25"
-tao = "0.32.8"
-scalefs_windowspnp = { path = "libs/scalefs_windowspnp" }
-anyhow = "1.0.95"
-tokio = { version = "1.43.0", features = ["full"] }
-futures = "0.3"
-rust-ini = "0.21"
+anyhow = "1"
 glob = "0.3.2"
-tauri-winrt-notification = "0.7.0"
+image = "0.25"
+rust-ini = "0.21"
+scalefs_windowspnp = { path = "libs/scalefs_windowspnp" }
+tauri-winrt-notification = "0.7"
+tray-icon = "0.21.0"
+winit = "0.30"
 winreg = "0.55"
 
 [dependencies.windows]
-version = "0.61.1"
+version = "0.61"
 features = [
     "Devices_Bluetooth",
     "Devices_Bluetooth_GenericAttributeProfile",
+    "deprecated",
     "Devices_Enumeration",
     "Foundation_Collections",
     "Storage_Streams",
@@ -29,14 +28,14 @@ features = [
 ]
 
 [dependencies.windows-sys]
-version = "0.59.0"
+version = "0.60"
 features = [
     "Win32_Devices_Properties",
     "Win32_Devices_DeviceAndDriverInstallation"
 ]
 
 [build-dependencies]
-embed-resource = "3.0.1"
+embed-resource = "3"
 
 [profile.release]
 lto = "fat"

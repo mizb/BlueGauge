@@ -59,10 +59,9 @@ use windows_sys::{
         DEVPROP_TYPEMOD_LIST,
         MAX_DEVPROP_TYPE,
         MAX_DEVPROP_TYPEMOD,
-        DEVPROPKEY,
         DEVPROPTYPE,
     },
-    Win32::Foundation::INVALID_HANDLE_VALUE,
+    Win32::Foundation::{INVALID_HANDLE_VALUE, DEVPROPKEY},
     Win32::System::Registry::{
         REG_DWORD,
         REG_MULTI_SZ,

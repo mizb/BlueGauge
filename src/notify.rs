@@ -10,5 +10,5 @@ pub fn notify(title: &str, text: &str, mute: bool) {
         .sound((!mute).then_some(Sound::Default))
         .duration(Duration::Short)
         .show()
-        .expect("unable to send notification");
+        .expect("Failied to send notification");
 }

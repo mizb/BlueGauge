@@ -1,11 +1,18 @@
+# BlueGauge
+A lightweight tray tool for easily checking the battery level of your Bluetooth devices.
+
+![image](https://raw.githubusercontent.com/iKineticate/BlueGauge/main/screenshots/app.png)
+
+<h3 align="center"> <a href='./README.md'>简体中文</a> | English</h3>
+
 ## Function
 
-- [ ] Setting：Device power as tray icon (font or battery icon)
-- [x] Setting：Update interval
+- [ ] Setting：Bluetooth Device power as tray icon
 - [x] Setting：Auto start
-- [x] Setting：Shows unconnected devices
-- [x] Setting：Truncate devices Name
-- [x] Setting：Changing the device power location
+- [x] Setting：Update interval
+- [x] Setting-tooltip：Shows unconnected devices
+- [x] Setting-tooltip：Truncate devices Name
+- [x] Setting-tooltip：Changing the device power location
 - [x] Setting-notice：Mute notice
 - [x] Setting-notice：Low battery notice
 - [x] Setting-notice：Notification when reconnecting the device
@@ -29,8 +36,3 @@ Welcome contributions from developers who can help us extend support for these d
 1. Limit Device Name Length: Implement a character limit for device names that ensures they fit within the available space of the tray notification. This may require shortening longer names to prevent truncation.
 
 2. Hide Disconnected Devices: Consider not displaying disconnected devices in the tray notifications. This approach would reduce clutter and ensure that only relevant information is shown, thereby preventing text overflow.
-
-
-### 3.When BlueGauge updates Bluetooth Information related to Bluetooth devices and sends notifications, if the tray menu is active (open), it can lead to the tray menu freezing. Currently considering a bug in the tray-icon library.
-
-- Temporary Fix: Press `Ctrl + Shift + Esc` to open the `Task Manager`. Search for `BlueGauge.exe`. Select the process and click `End Task` to stop it.

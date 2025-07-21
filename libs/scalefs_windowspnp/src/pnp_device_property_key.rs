@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 use scalefs_uuid::Uuid;
+use windows_sys::Win32::Foundation::{DEVPROPKEY, PROPERTYKEY};
 // use windows::core::GUID;
 // use windows_sys::{
 //     core::GUID,
@@ -15,23 +16,23 @@ pub struct PnpDevicePropertyKey {
     pub pid: u32,
 }
 impl PnpDevicePropertyKey {
-    pub fn to_devpropkey(&self) -> windows_sys::Win32::Devices::Properties::DEVPROPKEY {
-        windows_sys::Win32::Devices::Properties::DEVPROPKEY {
+    pub fn to_devpropkey(&self) -> DEVPROPKEY {
+        DEVPROPKEY {
             fmtid: windows_sys::core::GUID { data1: self.fmtid.data1, data2: self.fmtid.data2, data3: self.fmtid.data3, data4: self.fmtid.data4 },
             pid: self.pid
         }
     }
 }
-impl From<windows_sys::Win32::Devices::Properties::DEVPROPKEY> for PnpDevicePropertyKey {
-    fn from(item: windows_sys::Win32::Devices::Properties::DEVPROPKEY) -> Self {
+impl From<DEVPROPKEY> for PnpDevicePropertyKey {
+    fn from(item: DEVPROPKEY) -> Self {
         PnpDevicePropertyKey {
             fmtid: Uuid { data1: item.fmtid.data1, data2: item.fmtid.data2, data3: item.fmtid.data3, data4: item.fmtid.data4 },
             pid: item.pid
         }
     }
 }
-impl From<windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY> for PnpDevicePropertyKey {
-    fn from(item: windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY) -> Self {
+impl From<PROPERTYKEY> for PnpDevicePropertyKey {
+    fn from(item: PROPERTYKEY) -> Self {
         PnpDevicePropertyKey {
             fmtid: Uuid { data1: item.fmtid.data1, data2: item.fmtid.data2, data3: item.fmtid.data3, data4: item.fmtid.data4 },
             pid: item.pid

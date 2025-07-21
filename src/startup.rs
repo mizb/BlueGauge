@@ -19,11 +19,11 @@ pub fn set_startup(enabled: bool) -> Result<()> {
     if enabled {
         let exe_path = get_exe_path()?;
         run_key
-            .set_value("CapsGlow", &exe_path)
+            .set_value("BlueGauge", &exe_path)
             .with_context(|| "Failed to set the autostart registry key")?;
     } else {
         run_key
-            .delete_value("CapsGlow")
+            .delete_value("BlueGauge")
             .with_context(|| "Failed to delete the autostart registry key")?;
     }
 
@@ -36,7 +36,7 @@ pub fn get_startup_status() -> Result<bool> {
         .open_subkey_with_flags(RUN_KEY, KEY_READ)
         .map_err(|e| anyhow!("Failed to open HKEY_CURRENT_USER\\...\\Run - {e}"))?;
 
-    match run_key.get_value::<String, _>("CapsGlow") {
+    match run_key.get_value::<String, _>("BlueGauge") {
         Ok(value) => {
             let exe_path = get_exe_path()?;
             Ok(value == exe_path)

@@ -2,10 +2,6 @@
 // Licensed under the MIT License
 
 use scalefs_uuid::Uuid;
-// use windows_sys::{
-//     Win32::Devices::Properties::DEVPROPTYPE,
-//     Win32::System::Registry::REG_VALUE_TYPE,
-// };
 
 pub enum PnpDevicePropertyValue {
     ArrayOfValues(/*array: */Vec<PnpDevicePropertyValue>),

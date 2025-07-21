@@ -1,210 +1,286 @@
 use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 use anyhow::{Context, Result, anyhow};
 // use glob::glob;
 use ini::Ini;
 
-// #[derive(Clone, Debug)]
-// pub struct Config {
-//     pub update_interval: u64,
-//     pub show_disconnected_devices: bool,
-//     pub truncate_device_name: bool,
-//     pub battery_prefix_name: bool,
-//     // pub icon: Option<ShowIcon>,
-//     pub notify_mute: bool,
-//     pub notify_low_battery: Option<u8>,
-//     pub notify_reconnection: bool,
-//     pub notify_disconnection: bool,
-//     pub notify_added_devices: bool,
-//     pub notify_remove_devices: bool,
-// }
-
 #[derive(Default, Debug)]
 pub struct Config {
-    pub update_interval: AtomicU64,
-    pub show_disconnected_devices: AtomicBool,
-    pub truncate_device_name: AtomicBool,
-    pub battery_prefix_name: AtomicBool,
-    // pub icon: Option<ShowIcon>,
-    pub notify_mute: AtomicBool,
-    pub notify_low_battery: AtomicU8,
-    pub notify_reconnection: AtomicBool,
-    pub notify_disconnection: AtomicBool,
-    pub notify_added_devices: AtomicBool,
-    pub notify_remove_devices: AtomicBool,
+    pub config_path: PathBuf,
+    pub update_config_event: AtomicBool,
+    pub tray_config: TrayConfig,
+    pub notify_options: NotifyOptions,
 }
 
-// #[derive(Clone, Debug)]
-// pub enum ShowIcon {
-//     Logo(PathBuf), // logo.png
-//     Font(PathBuf), // Font(*.ttf)
-//     Png(Vec<(PathBuf, u8)>),
-//     None,
-// }
+impl Config {
+    pub fn get_update_interval(&self) -> u64 {
+        self.tray_config.update_interval.load(Ordering::Acquire)
+    }
 
-pub fn ini() -> Result<(Config, PathBuf)> {
-    let exe_path = env::current_exe().with_context(|| "Failed to get BlueGauge.exe Path")?;
-    let exe_dir = exe_path
-        .parent()
-        .ok_or(anyhow!("Failed to get BlueGauge.exe parent directory"))?;
-    let ini_path = exe_dir.join("config.ini");
-    if ini_path.exists() {
-        read_ini(exe_dir, ini_path)
-    } else {
-        create_new_ini(ini_path)
+    pub fn get_prefix_battery(&self) -> bool {
+        self.tray_config
+            .tooltip_options
+            .prefix_battery
+            .load(Ordering::Acquire)
+    }
+
+    pub fn get_show_disconnected(&self) -> bool {
+        self.tray_config
+            .tooltip_options
+            .show_disconnected
+            .load(Ordering::Acquire)
+    }
+
+    pub fn get_truncate_name(&self) -> bool {
+        self.tray_config
+            .tooltip_options
+            .truncate_name
+            .load(Ordering::Acquire)
+    }
+
+    pub fn get_mute(&self) -> bool {
+        self.notify_options.mute.load(Ordering::Acquire)
+    }
+
+    pub fn get_low_battery(&self) -> u8 {
+        self.notify_options.low_battery.load(Ordering::Acquire)
+    }
+
+    pub fn get_disconnection(&self) -> bool {
+        self.notify_options.disconnection.load(Ordering::Acquire)
+    }
+
+    pub fn get_reconnection(&self) -> bool {
+        self.notify_options.reconnection.load(Ordering::Acquire)
+    }
+
+    pub fn get_added(&self) -> bool {
+        self.notify_options.added.load(Ordering::Acquire)
+    }
+
+    pub fn get_removed(&self) -> bool {
+        self.notify_options.removed.load(Ordering::Acquire)
     }
 }
 
-fn create_new_ini(ini_path: PathBuf) -> Result<(Config, PathBuf)> {
-    let config = Config {
-        update_interval: AtomicU64::new(30),
-        ..Default::default()
-    };
-
-    let mut ini = Ini::new();
-
-    ini.with_section(Some("Settings"))
-        .set("update_interval", "30")
-        // .set("icon", "none") // Value: none、logo、ttf、battery_png（若为图标exe同一目录中存放*.png任一数量的照片，*的范围为0~100，要求每组照片宽高一致）
-        .set("show_disconnected_devices", "false")
-        .set("truncate_device_name", "false")
-        .set("battery_prefix_name", "false");
-
-    ini.with_section(Some("Notifications"))
-        .set("notify_low_battery", "0") // Value：none、number（0~100，单位百分比）
-        .set("notify_reconnection", "false")
-        .set("notify_disconnection", "false")
-        .set("notify_added_devices", "false")
-        .set("notify_remove_devices", "flase")
-        .set("notify_mute", "false");
-
-    ini.write_to_file(&ini_path)
-        .with_context(|| "Failed to create config.ini")?;
-
-    Ok((config, ini_path))
+#[derive(Debug)]
+pub struct TrayConfig {
+    pub updated_in_advance: AtomicBool,
+    pub update_interval: AtomicU64,
+    pub tooltip_options: TooltipOptions,
 }
 
-fn read_ini(_exe_dir: &Path, ini_path: PathBuf) -> Result<(Config, PathBuf)> {
-    let ini = Ini::load_from_file(&ini_path)
-        .with_context(|| "Failed to load config.ini in BlueGauge.exe directory")?;
-
-    let setting_section = ini
-        .section(Some("Settings"))
-        .with_context(|| "Failed to get 'Settings' Section")?;
-    let notifications_section = ini
-        .section(Some("Notifications"))
-        .with_context(|| "Failed to get 'Notifications' Section")?;
-
-    let update_interval = setting_section
-        .get("update_interval")
-        .filter(|v| !v.trim().is_empty())
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .unwrap_or(30);
-
-    let show_disconnected_devices = setting_section
-        .get("show_disconnected_devices")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-
-    let truncate_device_name = setting_section
-        .get("truncate_device_name")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-
-    let battery_prefix_name = setting_section
-        .get("battery_prefix_name")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-
-    // let icon = setting_section
-    //     .get("icon")
-    //     .map(|v| match v.trim().to_lowercase().as_str() {
-    //         "logo" => {
-    //             let logo_path = exe_dir.join("logo.png");
-    //             if logo_path.is_file() {
-    //                 ShowIcon::Logo(exe_dir.join("logo.png"))
-    //             } else {
-    //                 ShowIcon::None
-    //             }
-    //         }
-    //         "font" => {
-    //             let font_path = exe_dir.join("font.ttf");
-    //             if font_path.is_file() {
-    //                 ShowIcon::Font(exe_dir.join("font.ttf"))
-    //             } else {
-    //                 ShowIcon::None
-    //             }
-    //         }
-    //         "battery_png" => {
-    //             let battery_indicator_images = glob("*.png")
-    //                 .unwrap()
-    //                 .filter_map(Result::ok)
-    //                 .filter_map(|path| {
-    //                     path.file_stem()
-    //                         .and_then(|name| name.to_string_lossy().trim().parse::<u8>().ok())
-    //                         .filter(|&battery| battery <= 100)
-    //                         .map(|battery| (path, battery))
-    //                 })
-    //                 .collect::<Vec<_>>();
-    //             if battery_indicator_images.is_empty() {
-    //                 ShowIcon::None
-    //             } else {
-    //                 ShowIcon::Png(battery_indicator_images)
-    //             }
-    //         }
-    //         _ => ShowIcon::None,
-    //     });
-
-    let notify_low_battery = notifications_section
-        .get("notify_low_battery")
-        .and_then(|v| v.trim().parse::<u8>().ok())
-        .filter(|&battery| battery <= 100)
-        .unwrap_or(15);
-
-    let notify_reconnection = notifications_section
-        .get("notify_reconnection")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-    let notify_disconnection = notifications_section
-        .get("notify_disconnection")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-    let notify_added_devices = notifications_section
-        .get("notify_added_devices")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-    let notify_remove_devices = notifications_section
-        .get("notify_remove_devices")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-    let notify_mute = notifications_section
-        .get("notify_mute")
-        .is_some_and(|v| v.trim().to_lowercase() == "true");
-
-    let config = Config {
-        update_interval: update_interval.into(),
-        // icon,
-        show_disconnected_devices: show_disconnected_devices.into(),
-        truncate_device_name: truncate_device_name.into(),
-        battery_prefix_name: battery_prefix_name.into(),
-        notify_low_battery: notify_low_battery.into(),
-        notify_reconnection: notify_reconnection.into(),
-        notify_disconnection: notify_disconnection.into(),
-        notify_added_devices: notify_added_devices.into(),
-        notify_remove_devices: notify_remove_devices.into(),
-        notify_mute: notify_mute.into(),
-    };
-
-    Ok((config, ini_path))
+impl Default for TrayConfig {
+    fn default() -> Self {
+        TrayConfig {
+            updated_in_advance: AtomicBool::new(false),
+            update_interval: AtomicU64::new(60),
+            tooltip_options: TooltipOptions::default(),
+        }
+    }
 }
 
-pub fn write_ini_notifications(ini_path: &Path, key: &str, value: String) {
-    let mut ini = Ini::load_from_file(ini_path)
-        .expect("Failed to load config.ini in BlueGauge.exe directory");
-    ini.set_to(Some("Notifications"), key.to_owned(), value);
-    ini.write_to_file(ini_path)
-        .expect("Failed to write INI file");
+impl TrayConfig {
+    pub fn update(&mut self, name: &str, check: bool) {
+        match name {
+            "show_disconnected" => self
+                .tooltip_options
+                .show_disconnected
+                .store(check, Ordering::Relaxed),
+            "truncate_name" => self
+                .tooltip_options
+                .truncate_name
+                .store(check, Ordering::Relaxed),
+            "prefix_battery" => self
+                .tooltip_options
+                .prefix_battery
+                .store(check, Ordering::Relaxed),
+            _ => (),
+        }
+    }
 }
 
-pub fn write_ini_settings(ini_path: &Path, key: &str, value: String) {
-    let mut ini = Ini::load_from_file(ini_path)
-        .expect("Failed to load config.ini in BlueGauge.exe directory");
-    ini.set_to(Some("Settings"), key.to_owned(), value);
-    ini.write_to_file(ini_path)
-        .expect("Failed to write INI file");
+#[derive(Default, Debug)]
+pub struct TooltipOptions {
+    pub show_disconnected: AtomicBool,
+    pub truncate_name: AtomicBool,
+    pub prefix_battery: AtomicBool,
+}
+
+#[derive(Debug)]
+pub struct NotifyOptions {
+    pub mute: AtomicBool,
+    pub low_battery: AtomicU8,
+    pub disconnection: AtomicBool,
+    pub reconnection: AtomicBool,
+    pub added: AtomicBool,
+    pub removed: AtomicBool,
+}
+
+impl Default for NotifyOptions {
+    fn default() -> Self {
+        NotifyOptions {
+            mute: AtomicBool::new(false),
+            low_battery: AtomicU8::new(15),
+            disconnection: AtomicBool::new(false),
+            reconnection: AtomicBool::new(false),
+            added: AtomicBool::new(false),
+            removed: AtomicBool::new(false),
+        }
+    }
+}
+
+impl NotifyOptions {
+    pub fn update(&mut self, name: &str, check: bool) {
+        match name {
+            "mute" => self.mute.store(check, Ordering::Relaxed),
+            "disconnection" => self.disconnection.store(check, Ordering::Relaxed),
+            "reconnection" => self.reconnection.store(check, Ordering::Relaxed),
+            "added" => self.added.store(check, Ordering::Relaxed),
+            "removed" => self.removed.store(check, Ordering::Relaxed),
+            _ => (),
+        }
+    }
+}
+
+impl Config {
+    pub fn oepn() -> Result<Self> {
+        let config_path = env::current_exe()
+            .ok()
+            .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
+            .map(|parent_path| parent_path.join("BlueGauge.ini"))
+            .ok_or(anyhow!("Failed to get config path"))?;
+
+        if config_path.is_file() {
+            Config::read_ini(config_path)
+        } else {
+            Config::create_ini(config_path)
+        }
+    }
+
+    pub fn write_notify_options(&mut self, key: &str, value: &str) -> Result<()> {
+        let ini_path = &self.config_path;
+        let mut ini = Ini::load_from_file(ini_path)?;
+        ini.set_to(Some("NotifyOptions"), key.to_owned(), value.to_owned());
+        ini.write_to_file(ini_path)?;
+        Ok(())
+    }
+
+    pub fn write_tray_config(&mut self, key: &str, value: &str) -> Result<()> {
+        let ini_path = &self.config_path;
+        let mut ini = Ini::load_from_file(ini_path)?;
+        ini.set_to(Some("TrayConfig"), key.to_owned(), value.to_owned());
+        ini.write_to_file(ini_path)?;
+        Ok(())
+    }
+
+    fn create_ini(ini_path: PathBuf) -> Result<Self> {
+        let mut ini = Ini::new();
+
+        ini.with_section(Some("TrayConfig"))
+            .set("update_interval", "60")
+            .set("show_disconnected", "false")
+            .set("truncate_name", "false")
+            .set("prefix_battery", "false");
+
+        ini.with_section(Some("NotifyOptions"))
+            .set("mute", "false")
+            .set("low_battery", "15")
+            .set("disconnection", "false")
+            .set("reconnection", "false")
+            .set("added", "false")
+            .set("removed", "flase");
+
+        ini.write_to_file(&ini_path)
+            .with_context(|| "Failed to create BlueGauge.ini")?;
+
+        Ok(Config {
+            config_path: ini_path,
+            update_config_event: AtomicBool::new(false),
+            tray_config: TrayConfig::default(),
+            notify_options: NotifyOptions::default(),
+        })
+    }
+
+    fn read_ini(ini_path: PathBuf) -> Result<Self> {
+        let ini = Ini::load_from_file(&ini_path).with_context(|| "Failed to load BlueGauge.ini")?;
+
+        // 托盘设置
+        let tray_config_section = ini
+            .section(Some("TrayConfig"))
+            .with_context(|| "Failed to get 'TrayConfig' Section")?;
+
+        let update_interval = tray_config_section
+            .get("update_interval")
+            .filter(|v| !v.trim().is_empty())
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(60);
+
+        let show_disconnected = tray_config_section
+            .get("show_disconnected")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let truncate_name = tray_config_section
+            .get("truncate_name")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let prefix_battery = tray_config_section
+            .get("prefix_battery")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        // 通知设置
+        let notify_options_section = ini
+            .section(Some("NotifyOptions"))
+            .with_context(|| "Failed to get 'Notifications' Section")?;
+
+        let mute = notify_options_section
+            .get("mute")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let low_battery = notify_options_section
+            .get("low_battery")
+            .and_then(|v| v.trim().parse::<u8>().ok())
+            .filter(|&battery| battery <= 100)
+            .unwrap_or(15);
+
+        let disconnection = notify_options_section
+            .get("disconnection")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let reconnection = notify_options_section
+            .get("reconnection")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let added = notify_options_section
+            .get("added")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let removed = notify_options_section
+            .get("removed")
+            .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        Ok(Config {
+            config_path: ini_path,
+            update_config_event: AtomicBool::new(false),
+            tray_config: TrayConfig {
+                updated_in_advance: AtomicBool::new(false),
+                update_interval: AtomicU64::new(update_interval),
+                tooltip_options: TooltipOptions {
+                    show_disconnected: AtomicBool::new(show_disconnected),
+                    truncate_name: AtomicBool::new(truncate_name),
+                    prefix_battery: AtomicBool::new(prefix_battery),
+                },
+            },
+            notify_options: NotifyOptions {
+                mute: AtomicBool::new(mute),
+                low_battery: AtomicU8::new(low_battery),
+                disconnection: AtomicBool::new(disconnection),
+                reconnection: AtomicBool::new(reconnection),
+                added: AtomicBool::new(added),
+                removed: AtomicBool::new(removed),
+            },
+        })
+    }
 }

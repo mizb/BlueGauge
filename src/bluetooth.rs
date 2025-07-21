@@ -1,17 +1,31 @@
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{Context, Result, anyhow};
-use futures::future::join_all;
 use scalefs_windowspnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator};
 use windows::{
-    Devices::Bluetooth::GenericAttributeProfile::{GattCharacteristicUuids, GattServiceUuids},
-    Devices::Bluetooth::{BluetoothConnectionStatus as BCS, BluetoothDevice, BluetoothLEDevice},
+    Devices::Bluetooth::{
+        BluetoothConnectionStatus as BCS, BluetoothDevice, BluetoothLEDevice,
+        GenericAttributeProfile::{GattCharacteristicUuids, GattServiceUuids},
+    },
     Devices::Enumeration::DeviceInformation,
     Storage::Streams::DataReader,
-    core::{Error, GUID, HRESULT},
+    core::GUID,
 };
-use windows_sys::Win32::Devices::DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM;
-use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_FriendlyName, DEVPROPKEY};
+use windows_sys::Win32::{
+    Devices::{
+        DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM, Properties::DEVPKEY_Device_FriendlyName,
+    },
+    Foundation::DEVPROPKEY,
+};
+
+use crate::{
+    config::Config,
+    language::{Language, Localization},
+    notify,
+};
 
 #[allow(non_upper_case_globals)]
 const DEVPKEY_Bluetooth_Battery: DEVPROPKEY = DEVPROPKEY {
@@ -25,29 +39,26 @@ pub struct BluetoothInfo {
     pub name: String,
     pub battery: u8,
     pub status: bool,
-    // pub type: BluetoothType(BLE(...)、BT)
     pub id: String,
 }
 
-// pub enum BluetoothType {
-
-// }
-
-pub async fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
-    let (bt_devices, ble_devices) = futures::try_join!(find_bt_devices(), find_ble_devices())?;
+pub fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
+    let bt_devices = find_btc_devices()?;
+    let ble_devices = find_ble_devices()?;
     Ok((bt_devices, ble_devices))
 }
 
-async fn find_bt_devices() -> Result<Vec<BluetoothDevice>> {
-    let bt_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
+// Bluetooth Classic
+fn find_btc_devices() -> Result<Vec<BluetoothDevice>> {
+    let btc_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
 
-    let bt_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&bt_aqs_filter)?
+    let btc_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&btc_aqs_filter)?
         .get()
         .with_context(|| "Faled to find Bluetooth Classic from all devices")?;
 
-    let bt_devices_futures = bt_devices_info_collection
+    let btc_devices = btc_devices_info_collection
         .into_iter()
-        .map(|device_info| async move {
+        .filter_map(|device_info| {
             BluetoothDevice::FromIdAsync(&device_info.Id().ok()?)
                 .ok()?
                 .get()
@@ -55,26 +66,20 @@ async fn find_bt_devices() -> Result<Vec<BluetoothDevice>> {
         })
         .collect::<Vec<_>>();
 
-    let devices: Vec<_> = join_all(bt_devices_futures)
-        .await
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
-
-    Ok(devices)
+    Ok(btc_devices)
 }
 
-async fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
+// Bluetooth LE
+fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
     let ble_aqs_filter = BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)?;
 
     let ble_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&ble_aqs_filter)?
-        // .await
         .get()
         .with_context(|| "Faled to find Bluetooth Low Energy from all devices")?;
 
-    let ble_devices_futures = ble_devices_info_collection
+    let ble_devices = ble_devices_info_collection
         .into_iter()
-        .map(|device_info| async move {
+        .filter_map(|device_info| {
             BluetoothLEDevice::FromIdAsync(&device_info.Id().ok()?)
                 .ok()?
                 .get()
@@ -82,16 +87,10 @@ async fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
         })
         .collect::<Vec<_>>();
 
-    let devices: Vec<_> = join_all(ble_devices_futures)
-        .await
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
-
-    Ok(devices)
+    Ok(ble_devices)
 }
 
-pub async fn get_bluetooth_info(
+pub fn get_bluetooth_info(
     bt_devices: Vec<BluetoothDevice>,
     ble_devices: Vec<BluetoothLEDevice>,
 ) -> Result<HashSet<BluetoothInfo>> {
@@ -99,62 +98,57 @@ pub async fn get_bluetooth_info(
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth or Bluetooth LE devices found"
         )),
-        (0, _) => get_ble_info(ble_devices).await,
-        (_, 0) => get_bt_info(bt_devices).await,
+        (0, _) => get_ble_info(ble_devices),
+        (_, 0) => get_btc_info(bt_devices),
         (_, _) => {
-            let bt_futures = get_bt_info(bt_devices);
-            let ble_futures = get_ble_info(ble_devices);
-            let (bt_info, ble_info) = futures::try_join!(bt_futures, ble_futures)?;
-            let combined_info: HashSet<_> =
-                bt_info.into_iter().chain(ble_info.into_iter()).collect();
+            let bt_info = get_btc_info(bt_devices)?;
+            let ble_info = get_ble_info(ble_devices)?;
+            let combined_info = bt_info.into_iter().chain(ble_info).collect();
             Ok(combined_info)
         }
     }
 }
 
-async fn get_bt_info(bt_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
+fn get_btc_info(bt_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
+    let pnp_btc_devices_info: Vec<(String, u8)> = get_pnp_btc_devices_info()?;
+
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
-    let pnp_bt_devices_info: Vec<(String, u8)> = get_pnp_bt_devices_info().await?;
-    for bt_device in bt_devices {
-        match process_bt_device(&bt_device, &pnp_bt_devices_info) {
-            Ok(bt_info) => {
-                if !devices_info.insert(bt_info) {
-                    continue;
-                }
-            }
-            Err(e) => println!("{e}"),
-        }
-    }
+
+    bt_devices.into_iter().for_each(|bt_device| {
+        let _ = process_btc_device(bt_device, &pnp_btc_devices_info)
+            .inspect_err(|e| println!("{e}"))
+            .is_ok_and(|bt_info| devices_info.insert(bt_info));
+    });
+
     Ok(devices_info)
 }
 
-async fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<BluetoothInfo>> {
+fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<BluetoothInfo>> {
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
-    let futures = ble_devices.iter().map(process_ble_device);
-    let results: Vec<Result<BluetoothInfo>> = join_all(futures).await;
-    for result in results {
-        match result {
-            Ok(bt_info) => {
-                if !devices_info.insert(bt_info) {
-                    continue;
-                }
-            }
-            Err(e) => println!("{e}"),
-        }
-    }
+
+    let results = ble_devices.iter().map(process_ble_device);
+
+    results.into_iter().for_each(|r_ble_info| {
+        let _ = r_ble_info
+            .inspect_err(|e| println!("{e}"))
+            .is_ok_and(|bt_info| devices_info.insert(bt_info));
+    });
+
     Ok(devices_info)
 }
 
-fn process_bt_device(
-    bt_device: &BluetoothDevice,
-    pnp_bt_devices_info: &[(String, u8)],
+fn process_btc_device(
+    bt_device: BluetoothDevice,
+    pnp_btc_devices_info: &[(String, u8)],
 ) -> Result<BluetoothInfo> {
     let name = bt_device.Name()?.to_string();
-    let battery = pnp_bt_devices_info
+    let battery = pnp_btc_devices_info
         .iter()
         .find(|(pnp_name, _)| pnp_name.contains(&name))
         .map(|(_, battery)| *battery)
-        .ok_or_else(|| anyhow!("No matching Bluetooth Classic found in Pnp device: {name}"))?;
+        .ok_or_else(|| {
+            anyhow!("No matching Bluetooth Classic Devices found in Pnp device: {name}")
+        })?;
     let status = bt_device.ConnectionStatus()? == BCS::Connected;
     let id = bt_device.DeviceId()?.to_string();
     Ok(BluetoothInfo {
@@ -165,15 +159,14 @@ fn process_bt_device(
     })
 }
 
-async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
+fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
     let name = ble_device.Name()?.to_string();
     let battery = get_ble_battery_level(ble_device)
-        .await
-        .map_err(|e| anyhow!("Failed to get BLE:'{name}' Battery Level -> {e}"))?;
+        .map_err(|e| anyhow!("Failed to get '{name}'BLE Battery Level: {e}"))?;
     let status = ble_device
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
-        .with_context(|| format!("Failed to get Bluetooth connected status: {name}"))?;
+        .with_context(|| format!("Failed to get BLE connected status: {name}"))?;
     let id = ble_device.DeviceId()?.to_string();
     Ok(BluetoothInfo {
         name,
@@ -183,54 +176,58 @@ async fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothI
     })
 }
 
-async fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
+fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
     let battery_services_uuid: GUID = GattServiceUuids::Battery()?;
     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
 
-    let battery_services = ble_device
-        .GetGattServicesForUuidAsync(battery_services_uuid)?
-        .get()?
-        .Services()
-        .with_context(|| "Failed to get BLE Services")?;
+    // windows-rs库的GetGattServicesForUuidAsync异步与tray-icon的异步（托盘点击事件？）可能存在冲突进而导致阻塞
+    // 前提条件：BluetoothLEDevice不存在对应的UUID服务
+    // let battery_gatt_services = ble_device
+    //     .GetGattServicesForUuidAsync(battery_services_uuid)?
+    //     .get()?
+    //     .Services()
+    //     .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Services: {e}"))?;
+    //
+    // let battery_gatt_service = battery_gatt_services
+    //     .into_iter()
+    //     .next()
+    //     .ok_or_else(|| anyhow!("Failed to get BLE Battery Gatt Service"))?; // 手机蓝牙无电量服务
 
-    let battery_service = battery_services
-        .into_iter()
-        .next()
-        .ok_or_else(|| anyhow!("Failed to get BLE Service"))?; // 例如无法获取手机电池服务
+    let battery_gatt_service = ble_device
+        .GetGattService(battery_services_uuid)
+        .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Service: {e}"))?; // 手机蓝牙无电量服务;
 
-    let battery_gatt_chars = battery_service
+    let battery_gatt_chars = battery_gatt_service
         .GetCharacteristicsForUuidAsync(battery_level_uuid)?
         .get()?
         .Characteristics()
-        .with_context(|| "Failed to get BLE Gatt Characteristics")?;
+        .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Characteristics: {e}"))?;
 
     let battery_gatt_char = battery_gatt_chars
         .into_iter()
         .next()
-        .ok_or_else(|| anyhow!("Failed to get BLE Gatt Characteristic"))?;
+        .ok_or_else(|| anyhow!("Failed to get BLE Battery Gatt Characteristic"))?;
 
-    let battery_level = match battery_gatt_char.Uuid()? == battery_level_uuid {
+    match battery_gatt_char.Uuid()? == battery_level_uuid {
         true => {
             let buffer = battery_gatt_char.ReadValueAsync()?.get()?.Value()?;
             let reader = DataReader::FromBuffer(&buffer)?;
-            reader.ReadByte()
+            reader
+                .ReadByte()
+                .map_err(|e| anyhow!("Failed to read byte: {e}"))
         }
-        false => Err(Error::new(
-            HRESULT(0x80004005u32 as i32),
-            format!(
-                "Failed to match BLE level UUID: {:?}",
-                battery_gatt_char.Uuid()?
-            ),
+        false => Err(anyhow!(
+            "Failed to match BLE level UUID:\n{:?}:\n{battery_level_uuid:?}",
+            battery_gatt_char.Uuid()?
         )),
-    };
-
-    battery_level.map_err(|e| anyhow!(e))
+    }
 }
 
-async fn get_pnp_bt_devices_info() -> Result<Vec<(String, u8)>> {
-    let mut pnp_bt_devices_info: Vec<(String, u8)> = Vec::new();
+fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
+    let mut pnp_btc_devices_info: Vec<(String, u8)> = Vec::new();
 
-    let bt_devices_info = get_pnp_bt_devices(GUID_DEVCLASS_SYSTEM).await?;
+    let bt_devices_info = get_pnp_bt_devices(GUID_DEVCLASS_SYSTEM)?;
+
     for bt_device_info in bt_devices_info {
         if !bt_device_info.device_instance_id.contains(BT_INSTANCE_ID) {
             continue;
@@ -250,20 +247,123 @@ async fn get_pnp_bt_devices_info() -> Result<Vec<(String, u8)>> {
                 }
 
                 if let (Some(n), Some(b)) = (name.to_owned(), battery_level) {
-                    pnp_bt_devices_info.push((n, b));
+                    pnp_btc_devices_info.push((n, b));
                     break;
                 }
             }
         }
     }
 
-    Ok(pnp_bt_devices_info)
+    Ok(pnp_btc_devices_info)
 }
 
-async fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Result<Vec<PnpDeviceNodeInfo>> {
-    tokio::task::spawn_blocking(move || {
-        PnpEnumerator::enumerate_present_devices_by_device_setup_class(guid)
-            .map_err(|_| anyhow!("Failed to enumerate pnp devices"))
-    })
-    .await?
+fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Result<Vec<PnpDeviceNodeInfo>> {
+    PnpEnumerator::enumerate_present_devices_by_device_setup_class(guid)
+        .map_err(|_| anyhow!("Failed to enumerate pnp devices"))
+}
+
+pub fn compare_bt_info_to_send_notifications(
+    config: &Config,
+    low_battery_devices: Arc<Mutex<HashMap<String, bool>>>,
+    old_bt_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
+    new_bt_info: HashSet<BluetoothInfo>,
+) -> Option<Result<()>> {
+    let mut old_bt_info = old_bt_info.lock().unwrap();
+
+    let change_old_bt_info = old_bt_info
+        .difference(&new_bt_info)
+        .cloned()
+        .collect::<HashSet<_>>();
+    let change_new_bt_info = new_bt_info
+        .difference(&old_bt_info)
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    if change_old_bt_info == change_new_bt_info {
+        return None;
+    }
+
+    let low_battery = config.get_low_battery();
+    let mute = config.get_mute();
+    let disconnection = config.get_disconnection();
+    let reconnection = config.get_reconnection();
+    let added = config.get_added();
+    let removed = config.get_removed();
+
+    std::thread::spawn(move || {
+        let language = Language::get_system_language();
+        let loc = Localization::get(language);
+
+        let mut low_battery_devices = low_battery_devices.lock().unwrap();
+
+        for old in &change_old_bt_info {
+            for new in &change_new_bt_info {
+                // 低电量 / 重新连接 / 断开连接 的同一设备
+                if old.id == new.id {
+                    if new.battery != old.battery && new.battery < low_battery {
+                        // 所有低电量蓝牙插入低电量HashMap
+                        let notified = low_battery_devices.entry(new.id.clone()).or_insert(false);
+                        // 第一次（false）则通知，非第一次（true）则无反应
+                        if !std::mem::replace(&mut *notified, true) {
+                            let title = &format!("{} {low_battery}%", loc.bluetooth_battery_below);
+                            let text = &format!("{}: {}%", new.name, new.battery);
+                            notify(title, text, mute);
+                        }
+                    }
+
+                    if new.status != old.status {
+                        if disconnection && !new.status {
+                            notify(
+                                loc.bluetooth_device_disconnected,
+                                &format!("{}: {}", loc.device_name, new.name),
+                                mute,
+                            );
+                        }
+
+                        if reconnection && new.status {
+                            notify(
+                                loc.bluetooth_device_reconnected,
+                                &format!("{}: {}", loc.device_name, new.name),
+                                mute,
+                            );
+                        }
+                    }
+
+                    continue;
+                }
+
+                // 新添加设备
+                if added {
+                    let added_devices = change_new_bt_info
+                        .difference(&change_old_bt_info)
+                        .collect::<HashSet<_>>();
+                    if !added_devices.is_empty() {
+                        notify(
+                            loc.new_bluetooth_device_add,
+                            &format!("{}: {}", loc.device_name, new.name),
+                            mute,
+                        );
+                    }
+                }
+
+                // 移除设备
+                if removed {
+                    let removed_devices = change_old_bt_info
+                        .difference(&change_new_bt_info)
+                        .collect::<HashSet<_>>();
+                    if !removed_devices.is_empty() {
+                        notify(
+                            loc.old_bluetooth_device_removed,
+                            &format!("{}: {}", loc.device_name, old.name),
+                            mute,
+                        );
+                    }
+                }
+            }
+        }
+    });
+
+    *old_bt_info = new_bt_info;
+
+    Some(Ok(()))
 }
