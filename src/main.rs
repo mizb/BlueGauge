@@ -108,17 +108,6 @@ impl ApplicationHandler<UserEvent> for App {
                 };
                 std::thread::sleep(std::time::Duration::from_secs(update_interval));
 
-                {
-                    let config = config.lock().unwrap();
-                    if config
-                        .tray_config
-                        .updated_in_advance
-                        .swap(false, Ordering::SeqCst)
-                    {
-                        continue;
-                    }
-                }
-
                 proxy
                     .send_event(UserEvent::UpdateTray)
                     .expect("Failed to send UpdateTray Event");

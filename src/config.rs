@@ -1,6 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow};
 // use glob::glob;
@@ -67,15 +68,16 @@ impl Config {
 
 #[derive(Debug)]
 pub struct TrayConfig {
-    pub updated_in_advance: AtomicBool,
-    pub update_interval: AtomicU64,
+    /// Option< Bluetooth ID >
+    pub show_battery_icon: Mutex::<Option<String>>,
     pub tooltip_options: TooltipOptions,
+    pub update_interval: AtomicU64,
 }
 
 impl Default for TrayConfig {
     fn default() -> Self {
         TrayConfig {
-            updated_in_advance: AtomicBool::new(false),
+            show_battery_icon: Mutex::new(None),
             update_interval: AtomicU64::new(60),
             tooltip_options: TooltipOptions::default(),
         }
@@ -265,7 +267,7 @@ impl Config {
             config_path: ini_path,
             update_config_event: AtomicBool::new(false),
             tray_config: TrayConfig {
-                updated_in_advance: AtomicBool::new(false),
+                show_battery_icon: Mutex::new(None),
                 update_interval: AtomicU64::new(update_interval),
                 tooltip_options: TooltipOptions {
                     show_disconnected: AtomicBool::new(show_disconnected),

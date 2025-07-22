@@ -233,23 +233,35 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
             continue;
         }
 
-        if let Some(props) = bt_device_info.device_instance_properties {
-            let (mut name, mut battery_level) = (None, None);
-            for (key, value) in props {
-                if key == DEVPKEY_Device_FriendlyName.into() {
-                    if let PnpDevicePropertyValue::String(v) = value {
-                        name = Some(v)
-                    }
-                } else if key == DEVPKEY_Bluetooth_Battery.into() {
-                    if let PnpDevicePropertyValue::Byte(v) = value {
-                        battery_level = Some(v)
-                    }
-                }
+        if let Some(mut props) = bt_device_info.device_instance_properties {
+            let name = props
+                .remove(&DEVPKEY_Device_FriendlyName.into())
+                .and_then(|value| match value {
+                    PnpDevicePropertyValue::String(v) => Some(v),
+                    _ => None,
+                });
 
-                if let (Some(n), Some(b)) = (name.to_owned(), battery_level) {
-                    pnp_btc_devices_info.push((n, b));
-                    break;
-                }
+            let battery_level = props
+                .remove(&DEVPKEY_Bluetooth_Battery.into())
+                .and_then(|value| match value {
+                    PnpDevicePropertyValue::Byte(v) => Some(v),
+                    _ => None,
+                });
+
+            if cfg!(debug_assertions) {
+                use windows_sys::Win32::Devices::Properties::DEVPKEY_Device_Address;
+                let address = props
+                    .remove(&DEVPKEY_Device_Address.into())
+                    .and_then(|value| match value {
+                        PnpDevicePropertyValue::String(v) => Some(v),
+                        _ => None,
+                    });
+
+                println!("Name: {name:?}\nBattery: {battery_level:?}\nAddress: {address:?}\n");
+            }
+
+            if let (Some(n), Some(b)) = (name, battery_level) {
+                pnp_btc_devices_info.push((n, b));
             }
         }
     }

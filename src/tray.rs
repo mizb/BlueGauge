@@ -48,6 +48,9 @@ pub fn create_menu(
         find_bluetooth_devices().map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
     let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
+
+    dbg!(&bluetooth_devices_info);
+
     // 获取配置中是否勾选的指定设备的ID来决定它们的托盘状态是否未check，如果true，那就托盘更换为电池电量图标
     let bluetooth_check_items: Vec<CheckMenuItem> = bluetooth_devices_info
         .iter()
