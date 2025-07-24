@@ -52,11 +52,11 @@ pub fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLE
 fn find_btc_devices() -> Result<Vec<BluetoothDevice>> {
     let btc_aqs_filter = BluetoothDevice::GetDeviceSelectorFromPairingState(true)?;
 
-    let btc_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&btc_aqs_filter)?
+    let btc_devices_info = DeviceInformation::FindAllAsyncAqsFilter(&btc_aqs_filter)?
         .get()
         .with_context(|| "Faled to find Bluetooth Classic from all devices")?;
 
-    let btc_devices = btc_devices_info_collection
+    let btc_devices = btc_devices_info
         .into_iter()
         .filter_map(|device_info| {
             BluetoothDevice::FromIdAsync(&device_info.Id().ok()?)
@@ -73,11 +73,11 @@ fn find_btc_devices() -> Result<Vec<BluetoothDevice>> {
 fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
     let ble_aqs_filter = BluetoothLEDevice::GetDeviceSelectorFromPairingState(true)?;
 
-    let ble_devices_info_collection = DeviceInformation::FindAllAsyncAqsFilter(&ble_aqs_filter)?
+    let ble_devices_info = DeviceInformation::FindAllAsyncAqsFilter(&ble_aqs_filter)?
         .get()
         .with_context(|| "Faled to find Bluetooth Low Energy from all devices")?;
 
-    let ble_devices = ble_devices_info_collection
+    let ble_devices = ble_devices_info
         .into_iter()
         .filter_map(|device_info| {
             BluetoothLEDevice::FromIdAsync(&device_info.Id().ok()?)
@@ -91,17 +91,17 @@ fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
 }
 
 pub fn get_bluetooth_info(
-    bt_devices: Vec<BluetoothDevice>,
+    btc_devices: Vec<BluetoothDevice>,
     ble_devices: Vec<BluetoothLEDevice>,
 ) -> Result<HashSet<BluetoothInfo>> {
-    match (bt_devices.len(), ble_devices.len()) {
+    match (btc_devices.len(), ble_devices.len()) {
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth or Bluetooth LE devices found"
         )),
         (0, _) => get_ble_info(ble_devices),
-        (_, 0) => get_btc_info(bt_devices),
+        (_, 0) => get_btc_info(btc_devices),
         (_, _) => {
-            let bt_info = get_btc_info(bt_devices)?;
+            let bt_info = get_btc_info(btc_devices)?;
             let ble_info = get_ble_info(ble_devices)?;
             let combined_info = bt_info.into_iter().chain(ble_info).collect();
             Ok(combined_info)
@@ -109,13 +109,13 @@ pub fn get_bluetooth_info(
     }
 }
 
-fn get_btc_info(bt_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
+fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
     let pnp_btc_devices_info: Vec<(String, u8)> = get_pnp_btc_devices_info()?;
 
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
 
-    bt_devices.into_iter().for_each(|bt_device| {
-        let _ = process_btc_device(bt_device, &pnp_btc_devices_info)
+    btc_devices.into_iter().for_each(|btc_device| {
+        let _ = process_btc_device(btc_device, &pnp_btc_devices_info)
             .inspect_err(|e| println!("{e}"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
     });
@@ -138,19 +138,19 @@ fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<Bluetooth
 }
 
 fn process_btc_device(
-    bt_device: BluetoothDevice,
+    btc_device: BluetoothDevice,
     pnp_btc_devices_info: &[(String, u8)],
 ) -> Result<BluetoothInfo> {
-    let name = bt_device.Name()?.to_string();
+    let name = btc_device.Name()?.to_string().trim().into();
     let battery = pnp_btc_devices_info
         .iter()
-        .find(|(pnp_name, _)| pnp_name.contains(&name))
+        .find(|(pnp_name, _)| pnp_name.starts_with(&name))
         .map(|(_, battery)| *battery)
         .ok_or_else(|| {
             anyhow!("No matching Bluetooth Classic Devices found in Pnp device: {name}")
         })?;
-    let status = bt_device.ConnectionStatus()? == BCS::Connected;
-    let id = bt_device.DeviceId()?.to_string();
+    let status = btc_device.ConnectionStatus()? == BCS::Connected;
+    let id = btc_device.DeviceId()?.to_string();
     Ok(BluetoothInfo {
         name,
         battery,
@@ -177,22 +177,12 @@ fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
 }
 
 fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
+    // 0000180A-0000-1000-8000-00805F9B34FB
     let battery_services_uuid: GUID = GattServiceUuids::Battery()?;
+    // 00002A29-0000-1000-8000-00805F9B34FB
     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
 
     // windows-rs库的GetGattServicesForUuidAsync异步与tray-icon的异步（托盘点击事件？）可能存在冲突进而导致阻塞
-    // 前提条件：BluetoothLEDevice不存在对应的UUID服务
-    // let battery_gatt_services = ble_device
-    //     .GetGattServicesForUuidAsync(battery_services_uuid)?
-    //     .get()?
-    //     .Services()
-    //     .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Services: {e}"))?;
-    //
-    // let battery_gatt_service = battery_gatt_services
-    //     .into_iter()
-    //     .next()
-    //     .ok_or_else(|| anyhow!("Failed to get BLE Battery Gatt Service"))?; // 手机蓝牙无电量服务
-
     let battery_gatt_service = ble_device
         .GetGattService(battery_services_uuid)
         .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Service: {e}"))?; // 手机蓝牙无电量服务;
@@ -237,7 +227,7 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
             let name = props
                 .remove(&DEVPKEY_Device_FriendlyName.into())
                 .and_then(|value| match value {
-                    PnpDevicePropertyValue::String(v) => Some(v),
+                    PnpDevicePropertyValue::String(v) => Some(v.trim().into()),
                     _ => None,
                 });
 
@@ -257,7 +247,7 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
                         _ => None,
                     });
 
-                println!("Name: {name:?}\nBattery: {battery_level:?}\nAddress: {address:?}\n");
+                println!("Pnp Name: {name:?}\nPnp Battery: {battery_level:?}\nPnp Address: {address:?}\n");
             }
 
             if let (Some(n), Some(b)) = (name, battery_level) {
