@@ -262,8 +262,7 @@ impl ApplicationHandler<UserEvent> for App {
                         return;
                     }
                 };
-                let new_bt_info = match get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
-                {
+                let new_bt_info = match get_bluetooth_info(bluetooth_devices) {
                     Ok(i) => i,
                     Err(e) => {
                         println!("Failed to get bluetooth devices info - {e}");

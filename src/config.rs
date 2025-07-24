@@ -1,7 +1,6 @@
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
-use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow};
 // use glob::glob;
@@ -67,13 +66,14 @@ impl Config {
 }
 
 #[derive(Debug)]
-enum TrayIconSource {
+pub enum TrayIconSource {
     App,
     /// String: System Font Name
-    BatteryIcon,
+    BatteryIcon(BatteryIconFrom),
 }
 
-enum BatteryIcon {
+#[derive(Debug)]
+pub enum BatteryIconFrom {
     Default,
     Font(String),
     CustomPng,

@@ -46,7 +46,7 @@ pub fn create_menu(
     // 获取蓝牙设备电量并添加至菜单
     let bluetooth_devices =
         find_bluetooth_devices().map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
-    let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices.0, bluetooth_devices.1)
+    let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices)
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
 
     dbg!(&bluetooth_devices_info);

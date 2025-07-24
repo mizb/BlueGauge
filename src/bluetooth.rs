@@ -91,9 +91,10 @@ fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
 }
 
 pub fn get_bluetooth_info(
-    btc_devices: Vec<BluetoothDevice>,
-    ble_devices: Vec<BluetoothLEDevice>,
+    bt_devices: (Vec<BluetoothDevice>, Vec<BluetoothLEDevice>),
 ) -> Result<HashSet<BluetoothInfo>> {
+    let btc_devices = bt_devices.0;
+    let ble_devices = bt_devices.1;
     match (btc_devices.len(), ble_devices.len()) {
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth or Bluetooth LE devices found"
@@ -247,7 +248,9 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
                         _ => None,
                     });
 
-                println!("Pnp Name: {name:?}\nPnp Battery: {battery_level:?}\nPnp Address: {address:?}\n");
+                println!(
+                    "Pnp Name: {name:?}\nPnp Battery: {battery_level:?}\nPnp Address: {address:?}\n"
+                );
             }
 
             if let (Some(n), Some(b)) = (name, battery_level) {
