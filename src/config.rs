@@ -67,18 +67,30 @@ impl Config {
 }
 
 #[derive(Debug)]
+enum TrayIconSource {
+    App,
+    /// String: System Font Name
+    BatteryIcon,
+}
+
+enum BatteryIcon {
+    Default,
+    Font(String),
+    CustomPng,
+}
+
+#[derive(Debug)]
 pub struct TrayConfig {
-    /// Option< Bluetooth ID >
-    pub show_battery_icon: Mutex::<Option<String>>,
     pub tooltip_options: TooltipOptions,
+    pub tray_icon_source: TrayIconSource,
     pub update_interval: AtomicU64,
 }
 
 impl Default for TrayConfig {
     fn default() -> Self {
         TrayConfig {
-            show_battery_icon: Mutex::new(None),
             update_interval: AtomicU64::new(60),
+            tray_icon_source: TrayIconSource::App,
             tooltip_options: TooltipOptions::default(),
         }
     }
@@ -267,13 +279,13 @@ impl Config {
             config_path: ini_path,
             update_config_event: AtomicBool::new(false),
             tray_config: TrayConfig {
-                show_battery_icon: Mutex::new(None),
-                update_interval: AtomicU64::new(update_interval),
                 tooltip_options: TooltipOptions {
                     show_disconnected: AtomicBool::new(show_disconnected),
                     truncate_name: AtomicBool::new(truncate_name),
                     prefix_battery: AtomicBool::new(prefix_battery),
                 },
+                tray_icon_source: TrayIconSource::App,
+                update_interval: AtomicU64::new(update_interval),
             },
             notify_options: NotifyOptions {
                 mute: AtomicBool::new(mute),
