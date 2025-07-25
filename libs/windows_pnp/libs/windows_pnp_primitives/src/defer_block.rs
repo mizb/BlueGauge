@@ -90,7 +90,7 @@ use std::mem::ManuallyDrop;
          // NOTE: the variable we create here should be local to this defer block--and it should not be affected by other defer! macro instantiations (even ones in a more-inner scope)--so its name should really be irrelevant generally (and especially to code outside the macro)
          //
          // create a DeferBlock (which contains a field of type ManullyDrop<T>); in our testing, this variable is then dropped by Rust when the scope that encloses the defer! macro instantiation is exited
-         let __defer_block = scalefs_primitives::defer_block::DeferBlock::new(|| { $($block_expression)* });
+         let __defer_block = windows_pnp_primitives::defer_block::DeferBlock::new(|| { $($block_expression)* });
      };
  }
  

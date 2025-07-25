@@ -9,9 +9,9 @@ use crate::{
     PnpDevicePropertyKey,
     PnpDevicePropertyValue,
 };
-use scalefs_common::win32_utils;
-use scalefs_primitives::defer;
-use scalefs_uuid::Uuid;
+use windows_pnp_common::win32_utils;
+use windows_pnp_primitives::defer;
+use windows_pnp_uuid::Uuid;
 use std::collections::HashMap;
 use std::str::FromStr;
 use windows::{

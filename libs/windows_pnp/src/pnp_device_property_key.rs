@@ -1,14 +1,8 @@
 // Copyright (c) ScaleFS LLC; used with permission
 // Licensed under the MIT License
 
-use scalefs_uuid::Uuid;
+use windows_pnp_uuid::Uuid;
 use windows_sys::Win32::Foundation::{DEVPROPKEY, PROPERTYKEY};
-// use windows::core::GUID;
-// use windows_sys::{
-//     core::GUID,
-//     Win32::Devices::Properties::DEVPROPKEY,
-//     Win32::UI::Shell::PropertiesSystem::PROPERTYKEY,
-// };
 
 #[derive(PartialEq, Eq, Hash)]
 pub struct PnpDevicePropertyKey {

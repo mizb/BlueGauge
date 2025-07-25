@@ -9,7 +9,7 @@ anyhow = "1"
 glob = "0.3.2"
 image = "0.25"
 rust-ini = "0.21"
-scalefs_windowspnp = { path = "libs/scalefs_windowspnp" }
+windows_pnp = { path = "libs/windows_pnp" }
 tauri-winrt-notification = "0.7"
 tray-icon = "0.21.0"
 winit = "0.30"

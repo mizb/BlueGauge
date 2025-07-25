@@ -1,7 +1,7 @@
 // Copyright (c) ScaleFS LLC; used with permission
 // Licensed under the MIT License
 
-use scalefs_uuid::Uuid;
+use windows_pnp_uuid::Uuid;
 
 pub enum PnpDevicePropertyValue {
     ArrayOfValues(/*array: */Vec<PnpDevicePropertyValue>),

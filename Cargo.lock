@@ -11,11 +11,11 @@ dependencies = [
  "glob",
  "image",
  "rust-ini",
- "scalefs_windowspnp",
  "tauri-winrt-notification",
  "tray-icon",
  "windows",
  "windows-sys 0.60.2",
+ "windows_pnp",
  "winit",
  "winreg",
 ]
@@ -2208,37 +2208,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scalefs_common"
-version = "0.1.0"
-dependencies = [
- "windows",
-]
-
-[[package]]
-name = "scalefs_primitives"
-version = "0.1.0"
-
-[[package]]
-name = "scalefs_uuid"
-version = "0.1.0"
-dependencies = [
- "windows",
- "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "scalefs_windowspnp"
-version = "0.1.0"
-dependencies = [
- "libc",
- "scalefs_common",
- "scalefs_primitives",
- "scalefs_uuid",
- "windows",
- "windows-sys 0.60.2",
-]
-
-[[package]]
 name = "scoped-tls"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3280,6 +3249,37 @@ name = "windows_i686_msvc"
 version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "581fee95406bb13382d2f65cd4a908ca7b1e4c2f1917f143ba16efe98a589b5d"
+
+[[package]]
+name = "windows_pnp"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "windows",
+ "windows-sys 0.60.2",
+ "windows_pnp_common",
+ "windows_pnp_primitives",
+ "windows_pnp_uuid",
+]
+
+[[package]]
+name = "windows_pnp_common"
+version = "0.1.0"
+dependencies = [
+ "windows",
+]
+
+[[package]]
+name = "windows_pnp_primitives"
+version = "0.1.0"
+
+[[package]]
+name = "windows_pnp_uuid"
+version = "0.1.0"
+dependencies = [
+ "windows",
+ "windows-sys 0.60.2",
+]
 
 [[package]]
 name = "windows_x86_64_gnu"

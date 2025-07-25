@@ -1,5 +1,5 @@
 [package]
-name = "scalefs_uuid"
+name = "windows_pnp_uuid"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/scalefs/scalefs-uuid-lib-rs"

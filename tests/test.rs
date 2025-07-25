@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use scalefs_windowspnp::{PnpDevicePropertyValue, PnpEnumerator};
+use windows_pnp::{PnpDevicePropertyValue, PnpEnumerator};
 use windows::Devices::Bluetooth::{BluetoothDevice, BluetoothLEDevice};
 use windows::Devices::Enumeration::DeviceInformation;
 use windows_sys::Win32::{
@@ -50,20 +50,18 @@ fn btc() -> Result<()> {
         let rfcomm_services = btc.GetRfcommServicesAsync()?.get()?;
         let services = rfcomm_services.Services()?;
         let socket = StreamSocket::new()?;
-        let count = services.Size()?; // 获取服务数量
-        for i in 0..count {
-            let service = if let Ok(s) = services.GetAt(i) {
-                println!("Ok: {i}");
-                s
-            } else {
-                continue;
-            };
-            socket
+
+        for service in services {
+            if socket
                 .ConnectAsync(
                     &service.ConnectionHostName()?,
                     &service.ConnectionServiceName()?,
                 )?
-                .get()?;
+                .get()
+                .is_err()
+            {
+                continue;
+            };
             let reader = DataReader::CreateDataReader(&socket.InputStream()?)?;
             reader.InputStreamOptions()?;
             reader.LoadAsync(1024)?;

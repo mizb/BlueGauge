@@ -1,14 +1,14 @@
 [package]
-name = "scalefs_windowspnp"
+name = "windows_pnp"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/scalefs/scalefs-windowspnp-lib-rs"
 
 [dependencies]
 libc = "0.2"
-scalefs_common = { path = "libs/scalefs_common" }
-scalefs_primitives = { path = "libs/scalefs_primitives" }
-scalefs_uuid = { path = "libs/scalefs_uuid" }
+windows_pnp_common = { path = "libs/windows_pnp_common" }
+windows_pnp_primitives = { path = "libs/windows_pnp_primitives" }
+windows_pnp_uuid = { path = "libs/windows_pnp_uuid" }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 version = "0.61"

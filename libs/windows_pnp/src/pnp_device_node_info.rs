@@ -5,7 +5,7 @@ use crate::{
     PnpDevicePropertyKey,
     PnpDevicePropertyValue,
 };
-use scalefs_uuid::Uuid;
+use windows_pnp_uuid::Uuid;
 use std::collections::HashMap;
 
 pub struct PnpDeviceNodeInfo {
