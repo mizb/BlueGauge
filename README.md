@@ -9,7 +9,8 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## 功能
 
-- [ ] 设置：蓝牙设备电量作为托盘图标
+- [x] 设置：蓝牙设备电量作为托盘图标  
+    支持自定义图标，在软件目录下创建一个assets文件夹，然后添加0.png 至 100.png照片即可（总共101张，缺1不可）。
 - [x] 设置：开机自启动
 - [x] 设置：更新信息间隔时间
 - [x] 设置-提示：显示未连接的设备

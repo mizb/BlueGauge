@@ -7,7 +7,8 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## Function
 
-- [ ] Setting：Bluetooth Device power as tray icon
+- [x] Setting：Bluetooth Device power as tray icon  
+    Support custom icons, create an assets folder in the software directory, and then add 0.png to 100.png photos (101 photos in total).
 - [x] Setting：Auto start
 - [x] Setting：Update interval
 - [x] Setting-tooltip：Shows unconnected devices
