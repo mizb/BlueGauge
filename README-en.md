@@ -22,7 +22,7 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## Known Issues & Suggested Solutions
 
-### 1. Currently, BlueGauge successfully retrieves battery levels from low-energy Bluetooth devices and Plug-and-Play (PnP) devices. However, we are unable to fetch the battery status from devices like AirPods and Xbox controllers, which operate on proprietary communication protocols.
+### 1. Currently, BlueGauge successfully retrieves battery levels from Bluetooth low-energy devices and Bluetooth Classic devices. However, we are unable to fetch the battery status from devices like AirPods and Xbox controllers, which operate on proprietary communication protocols.
 
 **Solution:**
 
