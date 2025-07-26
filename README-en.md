@@ -1,7 +1,7 @@
 # BlueGauge
 A lightweight tray tool for easily checking the battery level of your Bluetooth devices.
 
-![image](https://raw.githubusercontent.com/iKineticate/BlueGauge/main/screenshots/app.png)
+![image](screenshots/app.png)
 
 <h3 align="center"> <a href='./README.md'>简体中文</a> | English</h3>
 
@@ -9,6 +9,7 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 - [x] Setting：Bluetooth Device power as tray icon  
     Support custom icons, create an assets folder in the software directory, and then add 0.png to 100.png photos (101 photos in total).
+    ![image](screenshots/battery.png)
 - [x] Setting：Auto start
 - [x] Setting：Update interval
 - [x] Setting-tooltip：Shows unconnected devices
