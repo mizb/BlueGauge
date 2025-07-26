@@ -1,15 +1,16 @@
 use std::collections::HashSet;
 
-use crate::ICON_DATA;
 use crate::bluetooth::{BluetoothInfo, find_bluetooth_devices, get_bluetooth_info};
 use crate::config::Config;
+use crate::icon::{ICON_DATA, load_battery_icon, load_icon};
 use crate::language::{Language, Localization};
+use crate::notify::notify;
 use crate::startup::get_startup_status;
 
 use anyhow::{Context, Result, anyhow};
 use tray_icon::menu::{IsMenuItem, Submenu};
 use tray_icon::{
-    Icon, TrayIcon, TrayIconBuilder,
+    TrayIcon, TrayIconBuilder,
     menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
 };
 
@@ -18,7 +19,7 @@ pub fn create_menu(
 ) -> Result<(
     Menu,
     Vec<CheckMenuItem>,
-    Vec<String>,
+    Vec<String>, // Tray Tooltip
     HashSet<BluetoothInfo>,
 )> {
     let language = Language::get_system_language();
@@ -47,20 +48,29 @@ pub fn create_menu(
     let bluetooth_devices =
         find_bluetooth_devices().map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
     let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices)
+        // .inspect(|i| if cfg!(debug_assertions) { println!("{i:#?}") } )
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
 
-    dbg!(&bluetooth_devices_info);
+    let bluetooth_tooltip_info = convert_tray_info(&bluetooth_devices_info, config);
 
-    // 获取配置中是否勾选的指定设备的ID来决定它们的托盘状态是否未check，如果true，那就托盘更换为电池电量图标
+    let show_tray_battery_icon_bt_id = config.get_tray_battery_icon_bt_id();
     let bluetooth_check_items: Vec<CheckMenuItem> = bluetooth_devices_info
         .iter()
-        .map(|info| CheckMenuItem::with_id(&info.id, &info.name, true, false, None))
+        .map(|info| {
+            CheckMenuItem::with_id(
+                &info.id,
+                &info.name,
+                true,
+                show_tray_battery_icon_bt_id.is_some_and(|id| id.eq(&info.id)),
+                None,
+            )
+        })
         .collect();
     let bluetooth_items: Vec<&dyn IsMenuItem> = bluetooth_check_items
         .iter()
         .map(|item| item as &dyn IsMenuItem)
         .collect();
-    let bluetooth_tooltip_info = convert_tray_info(&bluetooth_devices_info, config);
+    tray_check_menus.extend(bluetooth_check_items.iter().cloned());
 
     // 自启动菜单
     let should_startup = get_startup_status()?;
@@ -205,9 +215,19 @@ pub fn create_tray(
     let (tray_menu, tray_check_menus, bluetooth_tooltip_info, bluetooth_info) =
         create_menu(config).map_err(|e| anyhow!("Failed to create menu. - {e}"))?;
 
+    let icon = load_battery_icon(config, &bluetooth_info)
+        .inspect_err(|e| {
+            notify(
+                "BlueGauge",
+                &format!("Failed to get battery icon: {e}"),
+                config.get_mute(),
+            )
+        })
+        .unwrap_or(load_icon(ICON_DATA)?);
+
     let tray_icon = TrayIconBuilder::new()
         .with_menu_on_left_click(true)
-        .with_icon(load_icon(ICON_DATA).map_err(|e| anyhow!("Failed to load icon - {e}"))?)
+        .with_icon(icon)
         .with_tooltip(bluetooth_tooltip_info.join("\n"))
         .with_menu(Box::new(tray_menu))
         .build()
@@ -253,16 +273,4 @@ fn truncate_with_ellipsis(truncate_device_name: bool, name: &str, max_chars: usi
     } else {
         name.to_string()
     }
-}
-
-fn load_icon(icon_data: &[u8]) -> Result<Icon> {
-    let (icon_rgba, icon_width, icon_height) = {
-        let image = image::load_from_memory(icon_data)
-            .context("Failed to open icon path")?
-            .into_rgba8();
-        let (width, height) = image.dimensions();
-        let rgba = image.into_raw();
-        (rgba, width, height)
-    };
-    Icon::from_rgba(icon_rgba, icon_width, icon_height).context("Failed to crate the logo")
 }

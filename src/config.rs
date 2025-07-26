@@ -9,9 +9,9 @@ use ini::Ini;
 #[derive(Default, Debug)]
 pub struct Config {
     pub config_path: PathBuf,
-    pub update_config_event: AtomicBool,
-    pub tray_config: TrayConfig,
     pub notify_options: NotifyOptions,
+    pub tray_config: TrayConfig,
+    pub update_config_event: AtomicBool,
 }
 
 impl Config {
@@ -63,20 +63,21 @@ impl Config {
     pub fn get_removed(&self) -> bool {
         self.notify_options.removed.load(Ordering::Acquire)
     }
+
+    pub fn get_tray_battery_icon_bt_id(&self) -> Option<&str> {
+        match &self.tray_config.tray_icon_source {
+            TrayIconSource::App => None,
+            TrayIconSource::BatteryDefault(id) => Some(id),
+            TrayIconSource::BatteryCustom(id) => Some(id),
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum TrayIconSource {
     App,
-    /// String: System Font Name
-    BatteryIcon(BatteryIconFrom),
-}
-
-#[derive(Debug)]
-pub enum BatteryIconFrom {
-    Default,
-    Font(String),
-    CustomPng,
+    BatteryDefault(String), // Bluetooth ID
+    BatteryCustom(String),  // Bluetooth ID
 }
 
 #[derive(Debug)]
@@ -89,7 +90,7 @@ pub struct TrayConfig {
 impl Default for TrayConfig {
     fn default() -> Self {
         TrayConfig {
-            update_interval: AtomicU64::new(60),
+            update_interval: AtomicU64::new(30),
             tray_icon_source: TrayIconSource::App,
             tooltip_options: TooltipOptions::default(),
         }
@@ -174,30 +175,31 @@ impl Config {
         }
     }
 
-    pub fn write_notify_options(&mut self, key: &str, value: &str) -> Result<()> {
+    pub fn write_notify_options(&mut self, key: &str, value: &str) {
         let ini_path = &self.config_path;
-        let mut ini = Ini::load_from_file(ini_path)?;
+        let mut ini = Ini::load_from_file(ini_path).expect("Failed to load BlueGauge.config");
         ini.set_to(Some("NotifyOptions"), key.to_owned(), value.to_owned());
-        ini.write_to_file(ini_path)?;
-        Ok(())
+        ini.write_to_file(ini_path)
+            .expect("Failed to write config to BlueGauge.ini");
     }
 
-    pub fn write_tray_config(&mut self, key: &str, value: &str) -> Result<()> {
+    pub fn write_tray_config(&mut self, key: &str, value: &str) {
         let ini_path = &self.config_path;
-        let mut ini = Ini::load_from_file(ini_path)?;
+        let mut ini = Ini::load_from_file(ini_path).expect("Failed to load BlueGauge.config");
         ini.set_to(Some("TrayConfig"), key.to_owned(), value.to_owned());
-        ini.write_to_file(ini_path)?;
-        Ok(())
+        ini.write_to_file(ini_path)
+            .expect("Failed to write config to BlueGauge.ini");
     }
 
     fn create_ini(ini_path: PathBuf) -> Result<Self> {
         let mut ini = Ini::new();
 
         ini.with_section(Some("TrayConfig"))
-            .set("update_interval", "60")
+            .set("update_interval", "30")
             .set("show_disconnected", "false")
             .set("truncate_name", "false")
-            .set("prefix_battery", "false");
+            .set("prefix_battery", "false")
+            .set("tray_icon_source", "app"); // app、id
 
         ini.with_section(Some("NotifyOptions"))
             .set("mute", "false")
@@ -230,7 +232,7 @@ impl Config {
             .get("update_interval")
             .filter(|v| !v.trim().is_empty())
             .and_then(|v| v.trim().parse::<u64>().ok())
-            .unwrap_or(60);
+            .unwrap_or(30);
 
         let show_disconnected = tray_config_section
             .get("show_disconnected")
@@ -243,6 +245,27 @@ impl Config {
         let prefix_battery = tray_config_section
             .get("prefix_battery")
             .is_some_and(|v| v.trim().to_lowercase() == "true");
+
+        let tray_icon_source = match tray_config_section
+            .get("tray_icon_source")
+            .map(|s| s.trim())
+            .as_deref()
+        {
+            Some("app") => TrayIconSource::App,
+            Some(id) if !id.is_empty() => {
+                let have_custom_icons = env::current_exe()
+                    .ok()
+                    .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
+                    .map(|p| (0..=100).all(|i| p.join(format!("assets\\{i}.png")).is_file()))
+                    .unwrap_or(false);
+                if have_custom_icons {
+                    TrayIconSource::BatteryCustom(id.to_string())
+                } else {
+                    TrayIconSource::BatteryDefault(id.to_string())
+                }
+            }
+            _ => TrayIconSource::App,
+        };
 
         // 通知设置
         let notify_options_section = ini
@@ -284,7 +307,7 @@ impl Config {
                     truncate_name: AtomicBool::new(truncate_name),
                     prefix_battery: AtomicBool::new(prefix_battery),
                 },
-                tray_icon_source: TrayIconSource::App,
+                tray_icon_source,
                 update_interval: AtomicU64::new(update_interval),
             },
             notify_options: NotifyOptions {

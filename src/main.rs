@@ -4,6 +4,7 @@
 
 mod bluetooth;
 mod config;
+mod icon;
 mod language;
 mod notify;
 mod startup;
@@ -14,11 +15,13 @@ use crate::bluetooth::{
     get_bluetooth_info,
 };
 use crate::config::*;
+use crate::icon::load_battery_icon;
 use crate::notify::notify;
 use crate::startup::set_startup;
 use crate::tray::{create_menu, create_tray};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::{Arc, Mutex, atomic::Ordering};
 
 use tray_icon::{
@@ -31,8 +34,6 @@ use winit::{
     event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy},
     window::WindowId,
 };
-
-const ICON_DATA: &[u8] = include_bytes!("../assets/logo.ico");
 
 fn main() -> anyhow::Result<()> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -57,7 +58,8 @@ struct App {
     bluetooth_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
     config: Arc<Mutex<Config>>,
     event_loop_proxy: Option<EventLoopProxy<UserEvent>>,
-    low_battery_devices: Arc<Mutex<HashMap<String, bool>>>,
+    /// 存储已经通知过的低电量设备，避免再次通知
+    low_battery_devices: Arc<Mutex<HashSet<String>>>,
     tray: Mutex<Option<TrayIcon>>,
     tray_check_menus: Mutex<Option<Vec<CheckMenuItem>>>,
 }
@@ -73,7 +75,7 @@ impl Default for App {
             bluetooth_info: Arc::new(Mutex::new(bluetooth_info)),
             config: Arc::new(Mutex::new(config)),
             event_loop_proxy: None,
-            low_battery_devices: Arc::new(Mutex::new(HashMap::new())),
+            low_battery_devices: Arc::new(Mutex::new(HashSet::new())),
             tray: Mutex::new(Some(tray)),
             tray_check_menus: Mutex::new(Some(tray_check_menus)),
         }
@@ -84,7 +86,6 @@ impl Default for App {
 enum UserEvent {
     MenuEvent(MenuEvent),
     UpdateTray,
-    UpdateTrayIcon(tray_icon::Icon),
 }
 
 impl App {
@@ -144,65 +145,116 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                     // 托盘设置：更新间隔
                     "15" | "30" | "60" | "300" | "600" | "1800" => {
-                        config.update_config_event.store(true, Ordering::Release);
-                        // 对应ID的子菜单若已勾选，则更新结构体中的配置及配置文件的内容，其余子菜单设置为未勾选
-                        tray_check_menus
+                        // 只处理更新蓝牙信息间隔相关的菜单项
+                        let update_interval_items: Vec<_> = tray_check_menus
                             .iter()
                             .filter(|item| {
                                 ["15", "30", "60", "300", "600", "1800"]
                                     .contains(&item.id().as_ref())
                             })
-                            .for_each(|item| {
-                                let id = item.id().as_ref();
-                                if id == menu_event_id && item.is_checked() {
-                                    let update_interval = id
-                                        .parse::<u64>()
-                                        .expect("Failed to id parse to update interval(u64)");
-                                    config
-                                        .tray_config
-                                        .update_interval
-                                        .store(update_interval, Ordering::Relaxed);
-                                    let _ = config
-                                        .write_tray_config("update_interval", id)
-                                        .inspect_err(|e| {
-                                            notify("BlueGauge", &format!("{e}"), config.get_mute())
-                                        });
-                                } else {
-                                    item.set_checked(false)
-                                }
-                            });
+                            .collect();
+
+                        // 是否存在被点击且为勾选的项目
+                        let is_checked = update_interval_items
+                            .iter()
+                            .any(|item| item.id().as_ref() == menu_event_id && item.is_checked());
+
+                        // 更新所有菜单项状态
+                        update_interval_items.iter().for_each(|item| {
+                            let should_check = item.id().as_ref() == menu_event_id && is_checked;
+                            item.set_checked(should_check);
+                        });
+
+                        // 获取当前勾选的项目对应的电量
+                        let selected_update_interval = update_interval_items
+                            .iter()
+                            .find_map(|item| item.is_checked().then_some(item.id().as_ref()))
+                            .and_then(|id| id.parse::<u64>().ok());
+
+                        // 更新配置
+                        if let Some(update_interval) = selected_update_interval {
+                            config
+                                .tray_config
+                                .update_interval
+                                .store(update_interval, Ordering::Relaxed);
+                            config
+                                .write_tray_config("update_interval", &update_interval.to_string());
+                        } else {
+                            let default_update_interval = 30;
+                            config
+                                .tray_config
+                                .update_interval
+                                .store(default_update_interval, Ordering::Relaxed);
+                            config.write_tray_config(
+                                "update_interval",
+                                &default_update_interval.to_string(),
+                            );
+
+                            // 找到并选中默认项
+                            if let Some(default_item) = update_interval_items
+                                .iter()
+                                .find(|i| i.id().as_ref() == &default_update_interval.to_string())
+                            {
+                                default_item.set_checked(true);
+                            }
+                        }
+
+                        config.update_config_event.store(true, Ordering::Release);
                     }
                     // 通知设置：低电量
                     "0.01" | "0.05" | "0.1" | "0.15" | "0.2" | "0.25" => {
-                        tray_check_menus
+                        // 只处理低电量阈值相关的菜单项
+                        let low_battery_items: Vec<_> = tray_check_menus
                             .iter()
                             .filter(|item| {
                                 ["0.01", "0.05", "0.1", "0.15", "0.2", "0.25"]
                                     .contains(&item.id().as_ref())
                             })
-                            .for_each(|item| {
-                                let id = item.id().as_ref();
-                                if id == menu_event_id && item.is_checked() {
-                                    let low_battery_f64 = id
-                                        .parse::<f64>()
-                                        .expect("Failed to id parse to low battery(f64)");
-                                    let low_battery_u8 = (low_battery_f64 * 100.0).round() as u8;
-                                    config
-                                        .notify_options
-                                        .low_battery
-                                        .store(low_battery_u8, Ordering::Relaxed);
-                                    let _ = config
-                                        .write_notify_options(
-                                            "low_battery",
-                                            &low_battery_u8.to_string(),
-                                        )
-                                        .inspect_err(|e| {
-                                            notify("BlueGauge", &format!("{e}"), config.get_mute())
-                                        });
-                                } else {
-                                    item.set_checked(false)
-                                }
-                            });
+                            .collect();
+
+                        // 是否存在被点击且为勾选的项目
+                        let is_checked = low_battery_items
+                            .iter()
+                            .any(|item| item.id().as_ref() == menu_event_id && item.is_checked());
+
+                        // 更新所有菜单项状态
+                        low_battery_items.iter().for_each(|item| {
+                            let should_check = item.id().as_ref() == menu_event_id && is_checked;
+                            item.set_checked(should_check);
+                        });
+
+                        // 获取当前勾选的项目对应的电量
+                        let selected_low_battery = low_battery_items
+                            .iter()
+                            .find(|item| item.is_checked())
+                            .and_then(|item| item.id().as_ref().parse::<f64>().ok());
+
+                        // 更新配置
+                        if let Some(low_battery) = selected_low_battery {
+                            let low_battery = (low_battery * 100.0).round() as u8;
+                            config
+                                .notify_options
+                                .low_battery
+                                .store(low_battery, Ordering::Relaxed);
+                            config.write_notify_options("low_battery", &low_battery.to_string());
+                        } else {
+                            let default_low_battery = 15;
+                            config
+                                .notify_options
+                                .low_battery
+                                .store(default_low_battery, Ordering::Relaxed);
+                            config.write_notify_options(
+                                "low_battery",
+                                &default_low_battery.to_string(),
+                            );
+
+                            // 找到并选中默认项
+                            if let Some(default_item) =
+                                low_battery_items.iter().find(|i| i.id().as_ref() == "0.15")
+                            {
+                                default_item.set_checked(true);
+                            }
+                        }
                     }
                     // 通知设置：静音/断开连接/重新连接/添加/删除
                     "mute" | "disconnection" | "reconnection" | "added" | "removed" => {
@@ -213,45 +265,88 @@ impl ApplicationHandler<UserEvent> for App {
                         {
                             if item.is_checked() {
                                 config.notify_options.update(menu_event_id, true);
-                                let _ = config
-                                    .write_notify_options(menu_event_id, "true")
-                                    .inspect_err(|e| {
-                                        notify("BlueGauge", &format!("{e}"), config.get_mute())
-                                    });
+                                config.write_notify_options(menu_event_id, "true");
                             } else {
                                 config.notify_options.update(menu_event_id, false);
-                                let _ = config
-                                    .write_notify_options(menu_event_id, "false")
-                                    .inspect_err(|e| {
-                                        notify("BlueGauge", &format!("{e}"), config.get_mute())
-                                    });
+                                config.write_notify_options(menu_event_id, "false");
                             }
                         }
                     }
                     // 托盘设置：提示内容设置
                     "show_disconnected" | "truncate_name" | "prefix_battery" => {
-                        config.update_config_event.store(true, Ordering::Release);
                         if let Some(item) = tray_check_menus
                             .iter()
                             .find(|item| item.id().as_ref() == menu_event_id)
                         {
                             if item.is_checked() {
                                 config.tray_config.update(menu_event_id, true);
-                                let _ =
-                                    config.write_tray_config(menu_event_id, "true").inspect_err(
-                                        |e| notify("BlueGauge", &format!("{e}"), config.get_mute()),
-                                    );
+                                config.write_tray_config(menu_event_id, "true");
                             } else {
                                 config.tray_config.update(menu_event_id, false);
-                                let _ = config
-                                    .write_tray_config(menu_event_id, "false")
-                                    .inspect_err(|e| {
-                                        notify("BlueGauge", &format!("{e}"), config.get_mute())
-                                    });
+                                config.write_tray_config(menu_event_id, "false");
                             }
                         }
+
+                        config.update_config_event.store(true, Ordering::Release);
                     }
-                    _ => (),
+                    _ => {
+                        #[rustfmt::skip]
+                        let not_bluetooth_item_id = [
+                            "quit",
+                            "startup",
+                            "15", "30", "60", "300", "600", "1800",
+                            "0.01", "0.05", "0.1",  "0.15", "0.2", "0.25",
+                            "mute", "disconnection", "reconnection", "added", "removed",
+                            "show_disconnected", "truncate_name", "prefix_battery",
+                        ];
+
+                        // 只处理显示蓝牙电量图标相关的菜单项
+                        let show_battery_icon_items: Vec<_> = tray_check_menus
+                            .iter()
+                            .filter(|item| !not_bluetooth_item_id.contains(&item.id().as_ref()))
+                            .collect();
+
+                        let is_checked = show_battery_icon_items
+                            .iter()
+                            .any(|item| item.id().as_ref() == menu_event_id && item.is_checked());
+
+                        show_battery_icon_items.iter().for_each(|item| {
+                            let should_check = item.id().as_ref() == menu_event_id && is_checked;
+                            item.set_checked(should_check);
+                        });
+
+                        match config.tray_config.tray_icon_source {
+                            TrayIconSource::App if is_checked => {
+                                let have_custom_icons = std::env::current_exe()
+                                    .ok()
+                                    .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
+                                    .map(|p| {
+                                        (0..=100).all(|i| p.join(format!("assets\\{i}.png")).is_file())
+                                    })
+                                    .unwrap_or(false);
+
+                                config.tray_config.tray_icon_source = if have_custom_icons {
+                                    TrayIconSource::BatteryCustom(menu_event_id.to_string())
+                                } else {
+                                    TrayIconSource::BatteryDefault(menu_event_id.to_string())
+                                };
+
+                                config.write_tray_config("tray_icon_source", menu_event_id);
+                            }
+                            TrayIconSource::BatteryCustom(ref mut id)
+                            | TrayIconSource::BatteryDefault(ref mut id) => {
+                                if is_checked {
+                                    *id = menu_event_id.to_string();
+                                    config.write_tray_config("tray_icon_source", menu_event_id);
+                                } else {
+                                    config.tray_config.tray_icon_source = TrayIconSource::App;
+                                    config.write_tray_config("tray_icon_source", "");
+                                }
+                            }
+                            _ => (),
+                        }
+                        config.update_config_event.store(true, Ordering::Release);
+                    }
                 }
             }
             UserEvent::UpdateTray => {
@@ -274,12 +369,11 @@ impl ApplicationHandler<UserEvent> for App {
                     &self.config.lock().unwrap(),
                     Arc::clone(&self.low_battery_devices),
                     Arc::clone(&self.bluetooth_info),
-                    new_bt_info,
+                    &new_bt_info,
                 ) {
                     e.expect("Failed to compare bluetooth info");
                 } else {
-                    // 如果此时配置更新有，则不返回Return（配置更新，继续执行后续更新）
-                    // 避免蓝牙信息无更新，配置更新，导致托盘提示的设置无效化
+                    // 避免菜单事件使配置更新后，因蓝牙信息无更新而不执行后续更新代码
                     let config = self.config.lock().unwrap();
                     if !config.update_config_event.swap(false, Ordering::Acquire) {
                         return;
@@ -292,19 +386,16 @@ impl ApplicationHandler<UserEvent> for App {
                     create_menu(&config).expect("Failed to create tray menu");
 
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
+                    let icon = load_battery_icon(&config, &new_bt_info)
+                        .expect("Failed to load battery icon");
                     tray.set_menu(Some(Box::new(tray_menu)));
                     tray.set_tooltip(Some(tooltip.join("\n")))
                         .expect("Failed to update tray tooltip");
+                    tray.set_icon(Some(icon)).expect("Failed to set tray icon");
                 }
 
                 if let Some(tray_check_menus) = self.tray_check_menus.lock().unwrap().as_mut() {
                     *tray_check_menus = new_tray_check_menus;
-                }
-            }
-            UserEvent::UpdateTrayIcon(icon) => {
-                if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
-                    tray.set_icon(Some(icon))
-                        .expect("Failed to update tray icon image")
                 }
             }
         }

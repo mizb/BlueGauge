@@ -3,6 +3,7 @@ name = "BlueGauge"
 version = "0.2.0"
 edition = "2024"
 authors = ["iKineticate <https://github.com/iKineticate>"]
+repository = "https://github.com/iKineticate/BlueGauge"
 
 [dependencies]
 anyhow = "1"
@@ -14,6 +15,9 @@ tauri-winrt-notification = "0.7"
 tray-icon = "0.21.0"
 winit = "0.30"
 winreg = "0.55"
+# raqote = "0.8"
+# font-kit = "0.14"
+phf = { version = "0.12", default-features = false }
 
 [dependencies.windows]
 version = "0.61"
@@ -50,6 +54,8 @@ features = [
 
 [build-dependencies]
 embed-resource = "3"
+phf = { version = "0.12", default-features = false }
+phf_codegen = "0.12"
 
 [profile.release]
 lto = "fat"

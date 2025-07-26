@@ -1,10 +1,9 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     sync::{Arc, Mutex},
 };
 
 use anyhow::{Context, Result, anyhow};
-use scalefs_windowspnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator};
 use windows::{
     Devices::Bluetooth::{
         BluetoothConnectionStatus as BCS, BluetoothDevice, BluetoothLEDevice,
@@ -14,6 +13,7 @@ use windows::{
     Storage::Streams::DataReader,
     core::GUID,
 };
+use windows_pnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator};
 use windows_sys::Win32::{
     Devices::{
         DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM, Properties::DEVPKEY_Device_FriendlyName,
@@ -269,9 +269,9 @@ fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Result<Vec<PnpDeviceNode
 
 pub fn compare_bt_info_to_send_notifications(
     config: &Config,
-    low_battery_devices: Arc<Mutex<HashMap<String, bool>>>,
+    low_battery_devices: Arc<Mutex<HashSet<String>>>,
     old_bt_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
-    new_bt_info: HashSet<BluetoothInfo>,
+    new_bt_info: &HashSet<BluetoothInfo>,
 ) -> Option<Result<()>> {
     let mut old_bt_info = old_bt_info.lock().unwrap();
 
@@ -305,14 +305,23 @@ pub fn compare_bt_info_to_send_notifications(
             for new in &change_new_bt_info {
                 // 低电量 / 重新连接 / 断开连接 的同一设备
                 if old.id == new.id {
-                    if new.battery != old.battery && new.battery < low_battery {
-                        // 所有低电量蓝牙插入低电量HashMap
-                        let notified = low_battery_devices.entry(new.id.clone()).or_insert(false);
-                        // 第一次（false）则通知，非第一次（true）则无反应
-                        if !std::mem::replace(&mut *notified, true) {
-                            let title = &format!("{} {low_battery}%", loc.bluetooth_battery_below);
-                            let text = &format!("{}: {}%", new.name, new.battery);
-                            notify(title, text, mute);
+                    if new.battery != old.battery {
+                        let is_low = new.battery < low_battery;
+                        let was_low = low_battery_devices.contains(&new.id);
+                        match (was_low, is_low) {
+                            (false, true) => {
+                                // 第一次进入低电量
+                                let title =
+                                    &format!("{} {low_battery}%", loc.bluetooth_battery_below);
+                                let text = &format!("{}: {}%", new.name, new.battery);
+                                notify(title, text, mute);
+                                low_battery_devices.insert(new.id.clone());
+                            }
+                            (true, false) => {
+                                // 电量回升，允许下次低电量时再次通知
+                                low_battery_devices.remove(&new.id);
+                            }
+                            _ => (),
                         }
                     }
 
@@ -368,7 +377,7 @@ pub fn compare_bt_info_to_send_notifications(
         }
     });
 
-    *old_bt_info = new_bt_info;
+    *old_bt_info = new_bt_info.clone();
 
     Some(Ok(()))
 }
