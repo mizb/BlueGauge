@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
-use windows_pnp::{PnpDevicePropertyValue, PnpEnumerator};
 use windows::Devices::Bluetooth::{BluetoothDevice, BluetoothLEDevice};
 use windows::Devices::Enumeration::DeviceInformation;
+use windows_pnp::{PnpDevicePropertyValue, PnpEnumerator};
 use windows_sys::Win32::{
     Devices::{
         DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM,
