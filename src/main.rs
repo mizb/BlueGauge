@@ -193,7 +193,7 @@ impl ApplicationHandler<UserEvent> for App {
                             // 找到并选中默认项
                             if let Some(default_item) = update_interval_items
                                 .iter()
-                                .find(|i| i.id().as_ref() == &default_update_interval.to_string())
+                                .find(|i| i.id().as_ref() == default_update_interval.to_string())
                             {
                                 default_item.set_checked(true);
                             }
@@ -321,7 +321,8 @@ impl ApplicationHandler<UserEvent> for App {
                                     .ok()
                                     .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
                                     .map(|p| {
-                                        (0..=100).all(|i| p.join(format!("assets\\{i}.png")).is_file())
+                                        (0..=100)
+                                            .all(|i| p.join(format!("assets\\{i}.png")).is_file())
                                     })
                                     .unwrap_or(false);
 

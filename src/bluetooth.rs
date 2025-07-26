@@ -276,7 +276,7 @@ pub fn compare_bt_info_to_send_notifications(
     let mut old_bt_info = old_bt_info.lock().unwrap();
 
     let change_old_bt_info = old_bt_info
-        .difference(&new_bt_info)
+        .difference(new_bt_info)
         .cloned()
         .collect::<HashSet<_>>();
     let change_new_bt_info = new_bt_info

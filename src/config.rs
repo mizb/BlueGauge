@@ -249,7 +249,6 @@ impl Config {
         let tray_icon_source = match tray_config_section
             .get("tray_icon_source")
             .map(|s| s.trim())
-            .as_deref()
         {
             Some("app") => TrayIconSource::App,
             Some(id) if !id.is_empty() => {

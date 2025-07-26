@@ -68,7 +68,7 @@ fn get_icon_from_font(battery_level: u8, use_custom_font: bool) -> Result<Icon> 
         let name = format!("{battery_level}_{}", get_system_theme().get_theme_name());
         let icon_data =
             get_image_data(&name).ok_or(anyhow!("Failed to get {battery_level}.png"))?;
-        return load_icon(&icon_data);
+        return load_icon(icon_data);
         // let (icon_rgba, icon_width, icon_height) = render_battery_icon(battery_level)?;
         // return Icon::from_rgba(icon_rgba, icon_width, icon_height)
         //     .map_err(|e| anyhow!("Failed to get Icon - {e}"));
