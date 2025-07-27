@@ -20,6 +20,7 @@ impl Localization {
 pub struct Localization {
     pub quit: &'static str,
     pub about: &'static str,
+    pub force_update: &'static str,
     pub startup: &'static str,
     pub show_disconnected: &'static str,
     pub truncate_name: &'static str,
@@ -45,6 +46,7 @@ pub struct Localization {
 const ZH_CN: Localization = Localization {
     quit: "退出",
     about: "关于",
+    force_update: "更新信息",
     startup: "开机自启",
     // 托盘选项
     show_disconnected: "显示未连接设备",
@@ -74,6 +76,7 @@ const ZH_CN: Localization = Localization {
 const ZH_HANT: Localization = Localization {
     quit: "退出",
     about: "關于",
+    force_update: "更新資訊",
     startup: "開機自啓",
     show_disconnected: "顯示未連接設備",
     truncate_name: "裁剪設備的名稱",
@@ -99,6 +102,7 @@ const ZH_HANT: Localization = Localization {
 const EN_US: Localization = Localization {
     quit: "quit",
     about: "About",
+    force_update: "Update Info",
     startup: "Launch at Startup",
     show_disconnected: "Show show_disconnected Devices",
     truncate_name: "Truncate Device Name",
@@ -124,6 +128,7 @@ const EN_US: Localization = Localization {
 const JA_JP: Localization = Localization {
     quit: "終了",
     about: "約",
+    force_update: "情報を更新",
     startup: "スタートアップで起動",
     show_disconnected: "切断されたデバイスを表示",
     truncate_name: "デバイス名を切り捨てる",
@@ -149,6 +154,7 @@ const JA_JP: Localization = Localization {
 const KO_KR: Localization = Localization {
     quit: "종료",
     about: "정보",
+    force_update: "정보 업데이트",
     startup: "시작 시 실행",
     show_disconnected: "연결 끊긴 장치 표시",
     truncate_name: "장치 이름 자르기",
@@ -174,6 +180,7 @@ const KO_KR: Localization = Localization {
 const DE_DE: Localization = Localization {
     quit: "Beenden",
     about: "Über",
+    force_update: "Informationen aktualisieren",
     startup: "Beim Start ausführen",
     show_disconnected: "Getrennte Geräte anzeigen",
     truncate_name: "Gerätenamen kürzen",
@@ -199,6 +206,7 @@ const DE_DE: Localization = Localization {
 const RU_RU: Localization = Localization {
     quit: "Выход",
     about: "О программе",
+    force_update: "Обновить информацию",
     startup: "Запуск при старте",
     show_disconnected: "Показать отключенные устройства",
     truncate_name: "Обрезать имя устройства",
@@ -224,6 +232,7 @@ const RU_RU: Localization = Localization {
 const AR_SA: Localization = Localization {
     quit: "خروج",
     about: "حول",
+    force_update: "تحديث المعلومات",
     startup: "تشغيل عند بدء التشغيل",
     show_disconnected: "عرض الأجهزة غير المتصلة",
     truncate_name: "اقتطاع اسم الجهاز",
@@ -249,6 +258,7 @@ const AR_SA: Localization = Localization {
 const FR_FR: Localization = Localization {
     quit: "Quitter",
     about: "À propos",
+    force_update: "Mettre à jour les infos",
     startup: "Lancer au démarrage",
     show_disconnected: "Afficher les appareils déconnectés",
     truncate_name: "Tronquer le nom de l'appareil",

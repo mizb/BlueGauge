@@ -44,11 +44,12 @@ pub fn create_menu(
         }),
     );
 
+    let menu_force_update = MenuItem::with_id("force_update", loc.force_update, true, None);
+
     // 获取蓝牙设备电量并添加至菜单
     let bluetooth_devices =
         find_bluetooth_devices().map_err(|e| anyhow!("Failed to find bluetooth devices - {e}"))?;
     let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices)
-        // .inspect(|i| if cfg!(debug_assertions) { println!("{i:#?}") } )
         .map_err(|e| anyhow!("Failed to get bluetooth devices info - {e}"))?;
 
     let bluetooth_tooltip_info = convert_tray_info(&bluetooth_devices_info, config);
@@ -192,6 +193,12 @@ pub fn create_menu(
         .append(&menu_separator)
         .context("Failed to apped 'Separator' to Tray Menu")?;
     tray_menu
+        .append(&menu_force_update)
+        .context("Failed to apped 'Force Update' to Tray Menu")?;
+    tray_menu
+        .append(&menu_separator)
+        .context("Failed to apped 'Separator' to Tray Menu")?;
+    tray_menu
         .append(&menu_about)
         .context("Failed to apped 'About' to Tray Menu")?;
     tray_menu
@@ -209,6 +216,7 @@ pub fn create_menu(
     ))
 }
 
+#[rustfmt::skip]
 pub fn create_tray(
     config: &Config,
 ) -> Result<(TrayIcon, Vec<CheckMenuItem>, HashSet<BluetoothInfo>)> {
@@ -216,13 +224,7 @@ pub fn create_tray(
         create_menu(config).map_err(|e| anyhow!("Failed to create menu. - {e}"))?;
 
     let icon = load_battery_icon(config, &bluetooth_info)
-        .inspect_err(|e| {
-            notify(
-                "BlueGauge",
-                &format!("Failed to get battery icon: {e}"),
-                config.get_mute(),
-            )
-        })
+        .inspect_err(|e| notify("BlueGauge", &format!("Failed to get battery icon: {e}"), config.get_mute()))
         .unwrap_or(load_icon(ICON_DATA)?);
 
     let tray_icon = TrayIconBuilder::new()

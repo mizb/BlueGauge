@@ -59,7 +59,7 @@ struct App {
     config: Arc<Mutex<Config>>,
     event_loop_proxy: Option<EventLoopProxy<UserEvent>>,
     /// 存储已经通知过的低电量设备，避免再次通知
-    low_battery_devices: Arc<Mutex<HashSet<String>>>,
+    notified_low_battery: Arc<Mutex<HashSet<String>>>,
     tray: Mutex<Option<TrayIcon>>,
     tray_check_menus: Mutex<Option<Vec<CheckMenuItem>>>,
 }
@@ -75,7 +75,7 @@ impl Default for App {
             bluetooth_info: Arc::new(Mutex::new(bluetooth_info)),
             config: Arc::new(Mutex::new(config)),
             event_loop_proxy: None,
-            low_battery_devices: Arc::new(Mutex::new(HashSet::new())),
+            notified_low_battery: Arc::new(Mutex::new(HashSet::new())),
             tray: Mutex::new(Some(tray)),
             tray_check_menus: Mutex::new(Some(tray_check_menus)),
         }
@@ -112,12 +112,7 @@ impl ApplicationHandler<UserEvent> for App {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                     update_interval -= 1;
                     // 若有托盘配置存在更新，则立即退出循环进行更新
-                    if config
-                        .lock()
-                        .unwrap()
-                        .update_config_event
-                        .load(Ordering::Acquire)
-                    {
+                    if config.lock().unwrap().force_update.load(Ordering::Acquire) {
                         break;
                     }
                 }
@@ -149,6 +144,7 @@ impl ApplicationHandler<UserEvent> for App {
                 let menu_event_id = event.id().as_ref();
                 match menu_event_id {
                     "quit" => event_loop.exit(),
+                    "force_update" => config.force_update.store(true, Ordering::Release),
                     "startup" => {
                         if let Some(item) =
                             tray_check_menus.iter().find(|item| item.id() == "startup")
@@ -212,7 +208,7 @@ impl ApplicationHandler<UserEvent> for App {
                             }
                         }
 
-                        config.update_config_event.store(true, Ordering::Release);
+                        config.force_update.store(true, Ordering::Release);
                     }
                     // 通知设置：低电量
                     "0.01" | "0.05" | "0.1" | "0.15" | "0.2" | "0.25" => {
@@ -300,12 +296,13 @@ impl ApplicationHandler<UserEvent> for App {
                             }
                         }
 
-                        config.update_config_event.store(true, Ordering::Release);
+                        config.force_update.store(true, Ordering::Release);
                     }
                     _ => {
                         #[rustfmt::skip]
                         let not_bluetooth_item_id = [
                             "quit",
+                            "force_update",
                             "startup",
                             "15", "30", "60", "300", "600", "1800",
                             "0.01", "0.05", "0.1",  "0.15", "0.2", "0.25",
@@ -359,7 +356,7 @@ impl ApplicationHandler<UserEvent> for App {
                             }
                             _ => (),
                         }
-                        config.update_config_event.store(true, Ordering::Release);
+                        config.force_update.store(true, Ordering::Release);
                     }
                 }
             }
@@ -381,7 +378,7 @@ impl ApplicationHandler<UserEvent> for App {
 
                 if let Some(e) = compare_bt_info_to_send_notifications(
                     &self.config.lock().unwrap(),
-                    Arc::clone(&self.low_battery_devices),
+                    Arc::clone(&self.notified_low_battery),
                     Arc::clone(&self.bluetooth_info),
                     &new_bt_info,
                 ) {
@@ -389,7 +386,7 @@ impl ApplicationHandler<UserEvent> for App {
                 } else {
                     // 避免菜单事件使配置更新后，因蓝牙信息无更新而不执行后续更新代码
                     let config = self.config.lock().unwrap();
-                    if !config.update_config_event.swap(false, Ordering::Acquire) {
+                    if !config.force_update.swap(false, Ordering::Acquire) {
                         return;
                     }
                 }

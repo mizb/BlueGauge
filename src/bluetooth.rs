@@ -148,7 +148,7 @@ fn process_btc_device(
         .find(|(pnp_name, _)| pnp_name.starts_with(&name))
         .map(|(_, battery)| *battery)
         .ok_or_else(|| {
-            anyhow!("No matching Bluetooth Classic Devices found in Pnp device: {name}")
+            anyhow!("No matching Bluetooth Classic Devices found in Pnp device: {name}\n")
         })?;
     let status = btc_device.ConnectionStatus()? == BCS::Connected;
     let id = btc_device.DeviceId()?.to_string();
@@ -163,7 +163,7 @@ fn process_btc_device(
 fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
     let name = ble_device.Name()?.to_string();
     let battery = get_ble_battery_level(ble_device)
-        .map_err(|e| anyhow!("Failed to get '{name}'BLE Battery Level: {e}"))?;
+        .map_err(|e| anyhow!("Failed to get '{name}'BLE Battery Level: {e}\n"))?;
     let status = ble_device
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
@@ -269,7 +269,7 @@ fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Result<Vec<PnpDeviceNode
 
 pub fn compare_bt_info_to_send_notifications(
     config: &Config,
-    low_battery_devices: Arc<Mutex<HashSet<String>>>,
+    notified_low_battery: Arc<Mutex<HashSet<String>>>,
     old_bt_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
     new_bt_info: &HashSet<BluetoothInfo>,
 ) -> Option<Result<()>> {
@@ -299,7 +299,7 @@ pub fn compare_bt_info_to_send_notifications(
         let language = Language::get_system_language();
         let loc = Localization::get(language);
 
-        let mut low_battery_devices = low_battery_devices.lock().unwrap();
+        let mut notified_low_battery = notified_low_battery.lock().unwrap();
 
         for old in &change_old_bt_info {
             for new in &change_new_bt_info {
@@ -307,7 +307,7 @@ pub fn compare_bt_info_to_send_notifications(
                 if old.id == new.id {
                     if new.battery != old.battery {
                         let is_low = new.battery < low_battery;
-                        let was_low = low_battery_devices.contains(&new.id);
+                        let was_low = notified_low_battery.contains(&new.id);
                         match (was_low, is_low) {
                             (false, true) => {
                                 // 第一次进入低电量
@@ -315,11 +315,11 @@ pub fn compare_bt_info_to_send_notifications(
                                     &format!("{} {low_battery}%", loc.bluetooth_battery_below);
                                 let text = &format!("{}: {}%", new.name, new.battery);
                                 notify(title, text, mute);
-                                low_battery_devices.insert(new.id.clone());
+                                notified_low_battery.insert(new.id.clone());
                             }
                             (true, false) => {
                                 // 电量回升，允许下次低电量时再次通知
-                                low_battery_devices.remove(&new.id);
+                                notified_low_battery.remove(&new.id);
                             }
                             _ => (),
                         }

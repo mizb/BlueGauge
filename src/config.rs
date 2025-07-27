@@ -11,7 +11,7 @@ pub struct Config {
     pub config_path: PathBuf,
     pub notify_options: NotifyOptions,
     pub tray_config: TrayConfig,
-    pub update_config_event: AtomicBool,
+    pub force_update: AtomicBool,
 }
 
 impl Config {
@@ -214,7 +214,7 @@ impl Config {
 
         Ok(Config {
             config_path: ini_path,
-            update_config_event: AtomicBool::new(false),
+            force_update: AtomicBool::new(false),
             tray_config: TrayConfig::default(),
             notify_options: NotifyOptions::default(),
         })
@@ -299,7 +299,7 @@ impl Config {
 
         Ok(Config {
             config_path: ini_path,
-            update_config_event: AtomicBool::new(false),
+            force_update: AtomicBool::new(false),
             tray_config: TrayConfig {
                 tooltip_options: TooltipOptions {
                     show_disconnected: AtomicBool::new(show_disconnected),
