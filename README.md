@@ -30,7 +30,7 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 目前，BlueGauge 可检索低功耗蓝牙设备（BLE）设备和经典蓝牙（Bluetooth Classic）设备的电量，但对于像 **AirPods** 和 **Xbox 控制器** 等使用专有通信协议的设备，可能无法获取电量信息。
 
-- **解决方案：**: 欢迎有能力的开发者贡献代码，帮助扩展对这些设备的支持。
+- **解决方案：**: 欢迎有能力的开发者贡献代码或提供思路，帮助扩展对这些设备的支持。
 
 ### 2. 托盘提示文本被截断
 
