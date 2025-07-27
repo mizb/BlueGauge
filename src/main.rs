@@ -103,11 +103,24 @@ impl ApplicationHandler<UserEvent> for App {
         std::thread::spawn(move || {
             loop {
                 // 使用闭包让锁自动释放，避免在等待过程中锁死Config
-                let update_interval = {
+                let mut update_interval = {
                     let config = config.lock().unwrap();
                     config.get_update_interval()
                 };
-                std::thread::sleep(std::time::Duration::from_secs(update_interval));
+
+                while update_interval > 0 {
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    update_interval -= 1;
+                    // 若有托盘配置存在更新，则立即退出循环进行更新
+                    if config
+                        .lock()
+                        .unwrap()
+                        .update_config_event
+                        .load(Ordering::Acquire)
+                    {
+                        break;
+                    }
+                }
 
                 proxy
                     .send_event(UserEvent::UpdateTray)
