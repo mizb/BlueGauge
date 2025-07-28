@@ -24,7 +24,7 @@ use windows_sys::Win32::{
 use crate::{
     config::Config,
     language::{Language, Localization},
-    notify::{app_notify, notify},
+    notify::notify,
 };
 
 #[allow(non_upper_case_globals)]
@@ -117,7 +117,7 @@ fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothIn
 
     btc_devices.into_iter().for_each(|btc_device| {
         let _ = process_btc_device(btc_device, &pnp_btc_devices_info)
-            .inspect_err(|e| app_notify(format!("{e}")))
+            .inspect_err(|e| println!("{e}"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
     });
 
@@ -131,7 +131,7 @@ fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<Bluetooth
 
     results.into_iter().for_each(|r_ble_info| {
         let _ = r_ble_info
-            .inspect_err(|e| app_notify(format!("{e}")))
+            .inspect_err(|e| println!("{e}"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
     });
 
