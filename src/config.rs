@@ -6,8 +6,6 @@ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use anyhow::{Context, Result, anyhow};
 use ini::Ini;
 
-use crate::notify::app_notify;
-
 #[derive(Default, Debug)]
 pub struct Config {
     pub config_path: PathBuf,
@@ -200,11 +198,6 @@ impl Config {
         let mut ini = Ini::load_from_file(ini_path).expect("Failed to load BlueGauge.config");
         ini.set_to(Some("NotifyOptions"), key.to_owned(), value.to_owned());
         ini.write_to_file(ini_path)
-            .inspect_err(|e| {
-                app_notify(format!(
-                    "Failed to write notify config to BlueGauge.ini - {e}"
-                ))
-            })
             .expect("Failed to write notify config to BlueGauge.ini");
     }
 
@@ -213,11 +206,6 @@ impl Config {
         let mut ini = Ini::load_from_file(ini_path).expect("Failed to load BlueGauge.config");
         ini.set_to(Some("TrayConfig"), key.to_owned(), value.to_owned());
         ini.write_to_file(ini_path)
-            .inspect_err(|e| {
-                app_notify(format!(
-                    "Failed to write tray config to BlueGauge.ini - {e}"
-                ))
-            })
             .expect("Failed to write tray config to BlueGauge.ini");
     }
 

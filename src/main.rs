@@ -16,7 +16,7 @@ use crate::bluetooth::{
 };
 use crate::config::*;
 use crate::icon::load_battery_icon;
-use crate::notify::{app_notify, notify};
+use crate::notify::app_notify;
 use crate::startup::set_startup;
 use crate::tray::{create_menu, create_tray};
 
@@ -37,6 +37,10 @@ use winit::{
 };
 
 fn main() -> anyhow::Result<()> {
+    std::panic::set_hook(Box::new(|info| {
+        app_notify(format!("⚠️ Panic: {info}"));
+    }));
+
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
 
     let proxy = event_loop.create_proxy();
@@ -69,9 +73,8 @@ impl Default for App {
     fn default() -> Self {
         let config = Config::oepn().expect("Failed to open config");
 
-        let (tray, tray_check_menus, bluetooth_info) = create_tray(&config)
-            .inspect_err(|e| app_notify(format!("Failed to create tray - {e}")))
-            .unwrap();
+        let (tray, tray_check_menus, bluetooth_info) =
+            create_tray(&config).expect("Failed to create tray");
 
         Self {
             bluetooth_info: Arc::new(Mutex::new(bluetooth_info)),
@@ -100,12 +103,7 @@ impl App {
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
         let config = Arc::clone(&self.config);
-        let proxy = self
-            .event_loop_proxy
-            .clone()
-            .ok_or("Failed to get proxy")
-            .inspect_err(|e| app_notify(e))
-            .unwrap();
+        let proxy = self.event_loop_proxy.clone().expect("Failed to get proxy");
 
         std::thread::spawn(move || {
             loop {
@@ -120,8 +118,7 @@ impl ApplicationHandler<UserEvent> for App {
 
                 proxy
                     .send_event(UserEvent::UpdateTray)
-                    .inspect_err(|e| app_notify(format!("Failed to send UpdateTray Event - {e}")))
-                    .unwrap();
+                    .expect("Failed to send UpdateTray Event");
             }
         });
     }
@@ -141,9 +138,7 @@ impl ApplicationHandler<UserEvent> for App {
                     .lock()
                     .unwrap()
                     .clone()
-                    .ok_or("Tray check menus not initialized")
-                    .inspect_err(|e| app_notify(e))
-                    .unwrap();
+                    .expect("Tray check menus not initialized");
 
                 let menu_event_id = event.id().as_ref();
                 match menu_event_id {
@@ -153,11 +148,7 @@ impl ApplicationHandler<UserEvent> for App {
                         if let Some(item) =
                             tray_check_menus.iter().find(|item| item.id() == "startup")
                         {
-                            set_startup(item.is_checked())
-                                .inspect_err(|e| {
-                                    app_notify(format!("Failed to set Launch at Startup - {e}"))
-                                })
-                                .unwrap()
+                            set_startup(item.is_checked()).expect("Failed to set Launch at Startup")
                         }
                     }
                     // 托盘设置：更新间隔
@@ -407,10 +398,7 @@ impl ApplicationHandler<UserEvent> for App {
                     Arc::clone(&self.bluetooth_info),
                     &new_bt_info,
                 ) {
-                    e.inspect_err(|e| {
-                        app_notify(format!("Failed to compare bluetooth info - {e}"))
-                    })
-                    .expect("Failed to compare bluetooth info");
+                    e.expect("Failed to compare bluetooth info");
                 } else {
                     // 避免菜单事件使配置更新后，因蓝牙信息无更新而不执行后续更新代码
                     if !config.force_update.swap(false, Ordering::Acquire) {
@@ -418,9 +406,8 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 }
 
-                let (tray_menu, new_tray_check_menus, tooltip, _) = create_menu(&config)
-                    .inspect_err(|e| app_notify(format!("Failed to create tray menu - {e}")))
-                    .unwrap();
+                let (tray_menu, new_tray_check_menus, tooltip, _) =
+                    create_menu(&config).expect("Failed to create tray menu");
 
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
                     let icon = load_battery_icon(&config, &new_bt_info)

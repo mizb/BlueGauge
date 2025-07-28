@@ -14,14 +14,14 @@ use tray_icon::{
     menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
 };
 
-pub fn create_menu(
-    config: &Config,
-) -> Result<(
+type TrayMenuResult = (
     Menu,
     Vec<CheckMenuItem>,
-    Vec<String>, // Tray Tooltip
-    HashSet<BluetoothInfo>,
-)> {
+    Vec<String>,            // Tooltip
+    HashSet<BluetoothInfo>, // Already Notified Set
+);
+
+pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
     let language = Language::get_system_language();
     let loc = Localization::get(language);
 
