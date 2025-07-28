@@ -4,17 +4,28 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 fn main() {
+    load_logo();
+    build_battery_icons_bytes();
+
+    // 通知 Cargo：当 build.rs 或 assets/battery_icons 目录内容变化时，重新运行此脚本
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=assets/battery_icons");
+}
+
+fn load_logo() {
     embed_resource::compile("assets/logo.rc", embed_resource::NONE)
         .manifest_required()
         .unwrap();
+}
 
+fn build_battery_icons_bytes() {
     let out_dir = env::var_os("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("images.rs");
 
     // 获取项目根目录
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let manifest_path = Path::new(&manifest_dir);
-    let icons_dir = manifest_path.join("assets/battery_icons"); // 使用绝对路径
+    let icons_dir = manifest_path.join("assets/battery_icons");
 
     let mut file = BufWriter::new(File::create(dest_path).unwrap());
 
@@ -24,7 +35,6 @@ fn main() {
         let path = entry.path();
 
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("png") {
-            // 使用文件名（不含扩展名）作为 key
             let key = path.file_stem().unwrap().to_str().unwrap().to_string();
 
             let value_path = path.to_str().unwrap();
@@ -44,8 +54,4 @@ fn main() {
     .unwrap();
 
     writeln!(&mut file, ";\n").unwrap();
-
-    // 通知 Cargo：当 build.rs 或 assets/battery_icons 目录内容变化时，重新运行此脚本
-    println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=assets/battery_icons");
 }

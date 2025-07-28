@@ -312,8 +312,8 @@ pub fn compare_bt_info_to_send_notifications(
                             (false, true) => {
                                 // 第一次进入低电量
                                 let title =
-                                    &format!("{} {low_battery}%", loc.bluetooth_battery_below);
-                                let text = &format!("{}: {}%", new.name, new.battery);
+                                    format!("{} {low_battery}%", loc.bluetooth_battery_below);
+                                let text = format!("{}: {}%", new.name, new.battery);
                                 notify(title, text, mute);
                                 notified_low_battery.insert(new.id.clone());
                             }
@@ -329,7 +329,7 @@ pub fn compare_bt_info_to_send_notifications(
                         if disconnection && !new.status {
                             notify(
                                 loc.bluetooth_device_disconnected,
-                                &format!("{}: {}", loc.device_name, new.name),
+                                format!("{}: {}", loc.device_name, new.name),
                                 mute,
                             );
                         }
@@ -337,7 +337,7 @@ pub fn compare_bt_info_to_send_notifications(
                         if reconnection && new.status {
                             notify(
                                 loc.bluetooth_device_reconnected,
-                                &format!("{}: {}", loc.device_name, new.name),
+                                format!("{}: {}", loc.device_name, new.name),
                                 mute,
                             );
                         }
@@ -354,7 +354,7 @@ pub fn compare_bt_info_to_send_notifications(
                     if !added_devices.is_empty() {
                         notify(
                             loc.new_bluetooth_device_add,
-                            &format!("{}: {}", loc.device_name, new.name),
+                            format!("{}: {}", loc.device_name, new.name),
                             mute,
                         );
                     }
@@ -368,7 +368,7 @@ pub fn compare_bt_info_to_send_notifications(
                     if !removed_devices.is_empty() {
                         notify(
                             loc.old_bluetooth_device_removed,
-                            &format!("{}: {}", loc.device_name, old.name),
+                            format!("{}: {}", loc.device_name, old.name),
                             mute,
                         );
                     }

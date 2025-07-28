@@ -1,10 +1,12 @@
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 use anyhow::{Context, Result, anyhow};
-// use glob::glob;
 use ini::Ini;
+
+use crate::notify::app_notify;
 
 #[derive(Default, Debug)]
 pub struct Config {
@@ -64,26 +66,44 @@ impl Config {
         self.notify_options.removed.load(Ordering::Acquire)
     }
 
-    pub fn get_tray_battery_icon_bt_id(&self) -> Option<&str> {
-        match &self.tray_config.tray_icon_source {
+    pub fn get_tray_battery_icon_bt_id(&self) -> Option<String> {
+        let tray_icon_source = {
+            let lock = self.tray_config.tray_icon_source.lock().unwrap();
+            lock.clone()
+        };
+        match tray_icon_source {
             TrayIconSource::App => None,
-            TrayIconSource::BatteryDefault(id) => Some(id),
-            TrayIconSource::BatteryCustom(id) => Some(id),
+            TrayIconSource::BatteryDefault(id) => Some(id.clone()),
+            TrayIconSource::BatteryCustom(id) => Some(id.clone()),
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TrayIconSource {
     App,
     BatteryDefault(String), // Bluetooth ID
     BatteryCustom(String),  // Bluetooth ID
 }
 
+impl TrayIconSource {
+    pub fn update_id(&mut self, id: &str) {
+        match &self {
+            TrayIconSource::App => (),
+            TrayIconSource::BatteryDefault(_) => {
+                *self = TrayIconSource::BatteryDefault(id.to_string())
+            }
+            TrayIconSource::BatteryCustom(_) => {
+                *self = TrayIconSource::BatteryCustom(id.to_string())
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TrayConfig {
     pub tooltip_options: TooltipOptions,
-    pub tray_icon_source: TrayIconSource,
+    pub tray_icon_source: Mutex<TrayIconSource>,
     pub update_interval: AtomicU64,
 }
 
@@ -91,14 +111,14 @@ impl Default for TrayConfig {
     fn default() -> Self {
         TrayConfig {
             update_interval: AtomicU64::new(30),
-            tray_icon_source: TrayIconSource::App,
+            tray_icon_source: Mutex::new(TrayIconSource::App),
             tooltip_options: TooltipOptions::default(),
         }
     }
 }
 
 impl TrayConfig {
-    pub fn update(&mut self, name: &str, check: bool) {
+    pub fn update(&self, name: &str, check: bool) {
         match name {
             "show_disconnected" => self
                 .tooltip_options
@@ -148,7 +168,7 @@ impl Default for NotifyOptions {
 }
 
 impl NotifyOptions {
-    pub fn update(&mut self, name: &str, check: bool) {
+    pub fn update(&self, name: &str, check: bool) {
         match name {
             "mute" => self.mute.store(check, Ordering::Relaxed),
             "disconnection" => self.disconnection.store(check, Ordering::Relaxed),
@@ -175,20 +195,30 @@ impl Config {
         }
     }
 
-    pub fn write_notify_options(&mut self, key: &str, value: &str) {
+    pub fn write_notify_options(&self, key: &str, value: &str) {
         let ini_path = &self.config_path;
         let mut ini = Ini::load_from_file(ini_path).expect("Failed to load BlueGauge.config");
         ini.set_to(Some("NotifyOptions"), key.to_owned(), value.to_owned());
         ini.write_to_file(ini_path)
-            .expect("Failed to write config to BlueGauge.ini");
+            .inspect_err(|e| {
+                app_notify(format!(
+                    "Failed to write notify config to BlueGauge.ini - {e}"
+                ))
+            })
+            .expect("Failed to write notify config to BlueGauge.ini");
     }
 
-    pub fn write_tray_config(&mut self, key: &str, value: &str) {
+    pub fn write_tray_config(&self, key: &str, value: &str) {
         let ini_path = &self.config_path;
         let mut ini = Ini::load_from_file(ini_path).expect("Failed to load BlueGauge.config");
         ini.set_to(Some("TrayConfig"), key.to_owned(), value.to_owned());
         ini.write_to_file(ini_path)
-            .expect("Failed to write config to BlueGauge.ini");
+            .inspect_err(|e| {
+                app_notify(format!(
+                    "Failed to write tray config to BlueGauge.ini - {e}"
+                ))
+            })
+            .expect("Failed to write tray config to BlueGauge.ini");
     }
 
     fn create_ini(ini_path: PathBuf) -> Result<Self> {
@@ -306,7 +336,7 @@ impl Config {
                     truncate_name: AtomicBool::new(truncate_name),
                     prefix_battery: AtomicBool::new(prefix_battery),
                 },
-                tray_icon_source,
+                tray_icon_source: Mutex::new(tray_icon_source),
                 update_interval: AtomicU64::new(update_interval),
             },
             notify_options: NotifyOptions {

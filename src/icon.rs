@@ -29,13 +29,13 @@ fn get_image_data(name: &str) -> Option<&'static [u8]> {
 pub fn load_icon(icon_date: &[u8]) -> Result<Icon> {
     let (icon_rgba, icon_width, icon_height) = {
         let image = image::load_from_memory(icon_date)
-            .context("Failed to open icon path")?
+            .with_context(|| "Failed to open icon path")?
             .into_rgba8();
         let (width, height) = image.dimensions();
         let rgba = image.into_raw();
         (rgba, width, height)
     };
-    Icon::from_rgba(icon_rgba, icon_width, icon_height).context("Failed to crate the logo")
+    Icon::from_rgba(icon_rgba, icon_width, icon_height).with_context(|| "Failed to crate the logo")
 }
 
 pub fn load_battery_icon(
@@ -45,17 +45,19 @@ pub fn load_battery_icon(
     let default_icon =
         || load_icon(ICON_DATA).map_err(|e| anyhow!("Failed to load app icon - {e}"));
 
-    match &config.tray_config.tray_icon_source {
+    let tray_icon_source = {
+        let lock = config.tray_config.tray_icon_source.lock().unwrap();
+        lock.clone()
+    };
+
+    match tray_icon_source {
         TrayIconSource::App => default_icon(),
-        TrayIconSource::BatteryDefault(id) | TrayIconSource::BatteryCustom(id) => {
-            let use_custom_font = matches!(
-                config.tray_config.tray_icon_source,
-                TrayIconSource::BatteryCustom(_)
-            );
+        TrayIconSource::BatteryDefault(ref id) | TrayIconSource::BatteryCustom(ref id) => {
+            let use_custom_font = matches!(tray_icon_source, TrayIconSource::BatteryCustom(_));
 
             bluetooth_devices_info
                 .iter()
-                .find(|i| &i.id == id)
+                .find(|i| i.id == *id)
                 .map_or(get_icon_from_font(250, use_custom_font), |i| {
                     get_icon_from_font(i.battery, use_custom_font)
                 })
@@ -69,6 +71,7 @@ fn get_icon_from_font(battery_level: u8, use_custom_font: bool) -> Result<Icon> 
         let icon_data =
             get_image_data(&name).ok_or(anyhow!("Failed to get {battery_level}.png"))?;
         return load_icon(icon_data);
+
         // let (icon_rgba, icon_width, icon_height) = render_battery_icon(battery_level)?;
         // return Icon::from_rgba(icon_rgba, icon_width, icon_height)
         //     .map_err(|e| anyhow!("Failed to get Icon - {e}"));
@@ -169,7 +172,7 @@ fn get_system_theme() -> SystemTheme {
 
     let theme_reg_value: u32 = personalize_reg_key
         .get_value(APPS_USE_LIGHT_THEME_REGISTRY_KEY)
-        .expect("This program requires Windows 10    14393 or above");
+        .expect("This program requires Windows 10 14393 or above");
 
     match theme_reg_value {
         0 => SystemTheme::Dark,

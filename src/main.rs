@@ -16,11 +16,12 @@ use crate::bluetooth::{
 };
 use crate::config::*;
 use crate::icon::load_battery_icon;
-use crate::notify::notify;
+use crate::notify::{app_notify, notify};
 use crate::startup::set_startup;
 use crate::tray::{create_menu, create_tray};
 
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, Mutex, atomic::Ordering};
 
@@ -56,7 +57,7 @@ fn main() -> anyhow::Result<()> {
 
 struct App {
     bluetooth_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
-    config: Arc<Mutex<Config>>,
+    config: Arc<Config>,
     event_loop_proxy: Option<EventLoopProxy<UserEvent>>,
     /// 存储已经通知过的低电量设备，避免再次通知
     notified_low_battery: Arc<Mutex<HashSet<String>>>,
@@ -68,12 +69,13 @@ impl Default for App {
     fn default() -> Self {
         let config = Config::oepn().expect("Failed to open config");
 
-        let (tray, tray_check_menus, bluetooth_info) =
-            create_tray(&config).expect("Failed to create tray");
+        let (tray, tray_check_menus, bluetooth_info) = create_tray(&config)
+            .inspect_err(|e| app_notify(format!("Failed to create tray - {e}")))
+            .unwrap();
 
         Self {
             bluetooth_info: Arc::new(Mutex::new(bluetooth_info)),
-            config: Arc::new(Mutex::new(config)),
+            config: Arc::new(config),
             event_loop_proxy: None,
             notified_low_battery: Arc::new(Mutex::new(HashSet::new())),
             tray: Mutex::new(Some(tray)),
@@ -98,28 +100,28 @@ impl App {
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {
         let config = Arc::clone(&self.config);
-        let proxy = self.event_loop_proxy.clone().expect("Failed to get proxy");
+        let proxy = self
+            .event_loop_proxy
+            .clone()
+            .ok_or("Failed to get proxy")
+            .inspect_err(|e| app_notify(e))
+            .unwrap();
 
         std::thread::spawn(move || {
             loop {
-                // 使用闭包让锁自动释放，避免在等待过程中锁死Config
-                let mut update_interval = {
-                    let config = config.lock().unwrap();
-                    config.get_update_interval()
-                };
+                let update_interval = config.get_update_interval();
 
-                while update_interval > 0 {
+                for _ in 0..update_interval {
                     std::thread::sleep(std::time::Duration::from_secs(1));
-                    update_interval -= 1;
-                    // 若有托盘配置存在更新，则立即退出循环进行更新
-                    if config.lock().unwrap().force_update.load(Ordering::Acquire) {
+                    if config.force_update.load(Ordering::Acquire) {
                         break;
                     }
                 }
 
                 proxy
                     .send_event(UserEvent::UpdateTray)
-                    .expect("Failed to send UpdateTray Event");
+                    .inspect_err(|e| app_notify(format!("Failed to send UpdateTray Event - {e}")))
+                    .unwrap();
             }
         });
     }
@@ -133,13 +135,15 @@ impl ApplicationHandler<UserEvent> for App {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::MenuEvent(event) => {
-                let mut config = self.config.lock().unwrap();
+                let config = Arc::clone(&self.config);
                 let tray_check_menus = self
                     .tray_check_menus
                     .lock()
                     .unwrap()
                     .clone()
-                    .expect("Tray check menus not initialized");
+                    .ok_or("Tray check menus not initialized")
+                    .inspect_err(|e| app_notify(e))
+                    .unwrap();
 
                 let menu_event_id = event.id().as_ref();
                 match menu_event_id {
@@ -149,7 +153,11 @@ impl ApplicationHandler<UserEvent> for App {
                         if let Some(item) =
                             tray_check_menus.iter().find(|item| item.id() == "startup")
                         {
-                            set_startup(item.is_checked()).expect("Failed to set Launch at Startup")
+                            set_startup(item.is_checked())
+                                .inspect_err(|e| {
+                                    app_notify(format!("Failed to set Launch at Startup - {e}"))
+                                })
+                                .unwrap()
                         }
                     }
                     // 托盘设置：更新间隔
@@ -310,22 +318,28 @@ impl ApplicationHandler<UserEvent> for App {
                             "show_disconnected", "truncate_name", "prefix_battery",
                         ];
 
+                        let show_battery_icon_bt_id = menu_event_id;
+
                         // 只处理显示蓝牙电量图标相关的菜单项
                         let show_battery_icon_items: Vec<_> = tray_check_menus
                             .iter()
                             .filter(|item| !not_bluetooth_item_id.contains(&item.id().as_ref()))
                             .collect();
 
-                        let is_checked = show_battery_icon_items
-                            .iter()
-                            .any(|item| item.id().as_ref() == menu_event_id && item.is_checked());
+                        let is_checked = show_battery_icon_items.iter().any(|item| {
+                            item.id().as_ref() == show_battery_icon_bt_id && item.is_checked()
+                        });
 
                         show_battery_icon_items.iter().for_each(|item| {
-                            let should_check = item.id().as_ref() == menu_event_id && is_checked;
+                            let should_check =
+                                item.id().as_ref() == show_battery_icon_bt_id && is_checked;
                             item.set_checked(should_check);
                         });
 
-                        match config.tray_config.tray_icon_source {
+                        let mut tray_icon_source =
+                            config.tray_config.tray_icon_source.lock().unwrap();
+
+                        match tray_icon_source.deref() {
                             TrayIconSource::App if is_checked => {
                                 let have_custom_icons = std::env::current_exe()
                                     .ok()
@@ -336,21 +350,29 @@ impl ApplicationHandler<UserEvent> for App {
                                     })
                                     .unwrap_or(false);
 
-                                config.tray_config.tray_icon_source = if have_custom_icons {
-                                    TrayIconSource::BatteryCustom(menu_event_id.to_string())
+                                *tray_icon_source = if have_custom_icons {
+                                    TrayIconSource::BatteryCustom(
+                                        show_battery_icon_bt_id.to_string(),
+                                    )
                                 } else {
-                                    TrayIconSource::BatteryDefault(menu_event_id.to_string())
+                                    TrayIconSource::BatteryDefault(
+                                        show_battery_icon_bt_id.to_string(),
+                                    )
                                 };
 
-                                config.write_tray_config("tray_icon_source", menu_event_id);
+                                config
+                                    .write_tray_config("tray_icon_source", show_battery_icon_bt_id);
                             }
-                            TrayIconSource::BatteryCustom(ref mut id)
-                            | TrayIconSource::BatteryDefault(ref mut id) => {
+                            TrayIconSource::BatteryCustom(_)
+                            | TrayIconSource::BatteryDefault(_) => {
                                 if is_checked {
-                                    *id = menu_event_id.to_string();
-                                    config.write_tray_config("tray_icon_source", menu_event_id);
+                                    tray_icon_source.update_id(show_battery_icon_bt_id);
+                                    config.write_tray_config(
+                                        "tray_icon_source",
+                                        show_battery_icon_bt_id,
+                                    );
                                 } else {
-                                    config.tray_config.tray_icon_source = TrayIconSource::App;
+                                    *tray_icon_source = TrayIconSource::App;
                                     config.write_tray_config("tray_icon_source", "");
                                 }
                             }
@@ -362,39 +384,43 @@ impl ApplicationHandler<UserEvent> for App {
             }
             UserEvent::UpdateTray => {
                 let bluetooth_devices = match find_bluetooth_devices() {
-                    Ok(d) => d,
+                    Ok(devices) => devices,
                     Err(e) => {
-                        println!("Failed to find bluetooth devices - {e}");
-                        return;
-                    }
-                };
-                let new_bt_info = match get_bluetooth_info(bluetooth_devices) {
-                    Ok(i) => i,
-                    Err(e) => {
-                        println!("Failed to get bluetooth devices info - {e}");
+                        app_notify(format!("Failed to find bluetooth devices - {e}"));
                         return;
                     }
                 };
 
+                let new_bt_info = match get_bluetooth_info(bluetooth_devices) {
+                    Ok(infos) => infos,
+                    Err(e) => {
+                        app_notify(format!("Failed to get bluetooth devices info - {e}"));
+                        return;
+                    }
+                };
+
+                let config = Arc::clone(&self.config);
+
                 if let Some(e) = compare_bt_info_to_send_notifications(
-                    &self.config.lock().unwrap(),
+                    &config,
                     Arc::clone(&self.notified_low_battery),
                     Arc::clone(&self.bluetooth_info),
                     &new_bt_info,
                 ) {
-                    e.expect("Failed to compare bluetooth info");
+                    e.inspect_err(|e| {
+                        app_notify(format!("Failed to compare bluetooth info - {e}"))
+                    })
+                    .expect("Failed to compare bluetooth info");
                 } else {
                     // 避免菜单事件使配置更新后，因蓝牙信息无更新而不执行后续更新代码
-                    let config = self.config.lock().unwrap();
                     if !config.force_update.swap(false, Ordering::Acquire) {
                         return;
                     }
                 }
 
-                let config = self.config.lock().unwrap();
-
-                let (tray_menu, new_tray_check_menus, tooltip, _) =
-                    create_menu(&config).expect("Failed to create tray menu");
+                let (tray_menu, new_tray_check_menus, tooltip, _) = create_menu(&config)
+                    .inspect_err(|e| app_notify(format!("Failed to create tray menu - {e}")))
+                    .unwrap();
 
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
                     let icon = load_battery_icon(&config, &new_bt_info)

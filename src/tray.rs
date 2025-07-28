@@ -4,7 +4,7 @@ use crate::bluetooth::{BluetoothInfo, find_bluetooth_devices, get_bluetooth_info
 use crate::config::Config;
 use crate::icon::{ICON_DATA, load_battery_icon, load_icon};
 use crate::language::{Language, Localization};
-use crate::notify::notify;
+use crate::notify::app_notify;
 use crate::startup::get_startup_status;
 
 use anyhow::{Context, Result, anyhow};
@@ -62,7 +62,9 @@ pub fn create_menu(
                 &info.id,
                 &info.name,
                 true,
-                show_tray_battery_icon_bt_id.is_some_and(|id| id.eq(&info.id)),
+                show_tray_battery_icon_bt_id
+                    .as_deref()
+                    .is_some_and(|id| id.eq(&info.id)),
                 None,
             )
         })
@@ -224,7 +226,7 @@ pub fn create_tray(
         create_menu(config).map_err(|e| anyhow!("Failed to create menu. - {e}"))?;
 
     let icon = load_battery_icon(config, &bluetooth_info)
-        .inspect_err(|e| notify("BlueGauge", &format!("Failed to get battery icon: {e}"), config.get_mute()))
+        .inspect_err(|e| app_notify(format!("Failed to get battery icon: {e}")))
         .unwrap_or(load_icon(ICON_DATA)?);
 
     let tray_icon = TrayIconBuilder::new()
