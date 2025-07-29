@@ -142,18 +142,23 @@ fn process_btc_device(
     btc_device: BluetoothDevice,
     pnp_btc_devices_info: &[(String, u8)],
 ) -> Result<BluetoothInfo> {
-    let name = btc_device.Name()?.to_string().trim().into();
+    let btc_name: String = btc_device.Name()?.to_string().trim().into();
     let battery = pnp_btc_devices_info
         .iter()
-        .find(|(pnp_name, _)| pnp_name.starts_with(&name))
+        .filter_map(|(pnp_name, battery)| {
+            pnp_name
+                .starts_with(&btc_name)
+                .then_some((btc_name.chars().count(), battery))
+        })
+        .max_by_key(|(btc_name_len, _)| *btc_name_len)
         .map(|(_, battery)| *battery)
-        .ok_or_else(|| {
-            anyhow!("No matching Bluetooth Classic Devices found in Pnp device: {name}\n")
-        })?;
+        .ok_or(anyhow!(
+            "No matching Bluetooth Classic Device in Pnp device: {btc_name}"
+        ))?;
     let status = btc_device.ConnectionStatus()? == BCS::Connected;
     let id = btc_device.DeviceId()?.to_string();
     Ok(BluetoothInfo {
-        name,
+        name: btc_name,
         battery,
         status,
         id,
@@ -264,7 +269,7 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
 
 fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Result<Vec<PnpDeviceNodeInfo>> {
     PnpEnumerator::enumerate_present_devices_by_device_setup_class(guid)
-        .map_err(|_| anyhow!("Failed to enumerate pnp devices"))
+        .map_err(|e| anyhow!("Failed to enumerate pnp devices - {e:?}"))
 }
 
 pub fn compare_bt_info_to_send_notifications(
