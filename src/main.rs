@@ -406,8 +406,13 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 }
 
-                let (tray_menu, new_tray_check_menus, tooltip, _) =
-                    create_menu(&config).expect("Failed to create tray menu");
+                let (tray_menu, new_tray_check_menus, tooltip, _) = match create_menu(&config) {
+                    Ok(menu) => menu,
+                    Err(e) => {
+                        app_notify(format!("Failed to create tray  menu - {e}"));
+                        return;
+                    }
+                };
 
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
                     let icon = load_battery_icon(&config, &new_bt_info)
