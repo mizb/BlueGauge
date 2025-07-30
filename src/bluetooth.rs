@@ -111,7 +111,28 @@ pub fn get_bluetooth_info(
 }
 
 fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
-    let pnp_btc_devices_info: Vec<(String, u8)> = get_pnp_btc_devices_info()?;
+    // 获取Pnp设备可能出错（具有不详），需重试多次避开错误
+    let pnp_btc_devices_info: Vec<(String, u8)> = {
+        let max_retries = 2;
+        let mut attempts = 0;
+
+        loop {
+            match get_pnp_btc_devices_info() {
+                Ok(info) => break info,
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= max_retries {
+                        return Err(e); // 达到最大重试次数，返回错误
+                    }
+                    println!(
+                        "获取蓝牙设备信息失败: {}, 2秒后重试... (尝试 {}/{})",
+                        e, attempts, max_retries
+                    );
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                }
+            }
+        }
+    };
 
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
 
@@ -168,7 +189,7 @@ fn process_btc_device(
 fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
     let name = ble_device.Name()?.to_string();
     let battery = get_ble_battery_level(ble_device)
-        .map_err(|e| anyhow!("Failed to get '{name}'BLE Battery Level: {e}\n"))?;
+        .map_err(|e| anyhow!("Failed to get '{name}'BLE Battery Level: {e}"))?;
     let status = ble_device
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
