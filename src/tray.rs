@@ -37,7 +37,7 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
         Some(loc.about),
         Some(AboutMetadata {
             name: Some("BlueGauge".to_owned()),
-            version: Some("0.2.0".to_owned()),
+            version: Some("0.2.2".to_owned()),
             authors: Some(vec!["iKineticate".to_owned()]),
             website: Some("https://github.com/iKineticate/BlueGauge".to_owned()),
             ..Default::default()
