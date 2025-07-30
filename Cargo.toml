@@ -1,18 +1,17 @@
 [package]
 name = "BlueGauge"
-version = "0.2.0"
+version = "0.2.2"
 edition = "2024"
 authors = ["iKineticate <https://github.com/iKineticate>"]
 repository = "https://github.com/iKineticate/BlueGauge"
 
 [dependencies]
 anyhow = "1"
-glob = "0.3.2"
 image = "0.25"
 rust-ini = "0.21"
 windows_pnp = { path = "libs/windows_pnp" }
 tauri-winrt-notification = "0.7"
-tray-icon = "0.21.0"
+tray-icon = "0.21"
 winit = "0.30"
 winreg = "0.55"
 # raqote = "0.8"
@@ -56,6 +55,7 @@ features = [
 embed-resource = "3"
 phf = { version = "0.12", default-features = false }
 phf_codegen = "0.12"
+glob = "0.3"
 
 [profile.release]
 lto = "fat"
