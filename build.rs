@@ -1,5 +1,6 @@
+use glob::glob;
 use std::env;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
@@ -23,35 +24,33 @@ fn build_battery_icons_bytes() {
     let dest_path = Path::new(&out_dir).join("images.rs");
 
     // 获取项目根目录
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let manifest_path = Path::new(&manifest_dir);
-    let icons_dir = manifest_path.join("assets/battery_icons");
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let icons_dir = Path::new(&manifest_dir).join("assets/battery_icons");
+
+    assert!(
+        icons_dir.exists(),
+        "Icons directory does not exist: {icons_dir:?}"
+    );
 
     let mut file = BufWriter::new(File::create(dest_path).unwrap());
-
     let mut map_builder = phf_codegen::Map::new();
-    for entry in fs::read_dir(&icons_dir).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
 
-        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("png") {
+    let pattern = format!("{}/*.png", icons_dir.to_string_lossy());
+    for entry in glob(&pattern).expect("Failed to read glob pattern") {
+        let path = entry.expect("Failed to get path");
+
+        if path.is_file() {
             let key = path.file_stem().unwrap().to_str().unwrap().to_string();
+            let value_path = path.to_str().unwrap().replace('\\', "/");
 
-            let value_path = path.to_str().unwrap();
-
-            // 将 "文件名" -> include_bytes!("文件路径") 添加到 map 中
-            // 注意：需要转义 Windows 路径中的反斜杠
-            let include_bytes = format!("include_bytes!(\"{}\")", value_path.replace('\\', "/"));
-            map_builder.entry(key, include_bytes);
+            map_builder.entry(key, format!("include_bytes!(\"{}\")", value_path));
         }
     }
 
-    write!(
+    writeln!(
         &mut file,
-        "static IMAGES: phf::Map<&'static str, &'static [u8]> = {}",
+        "static IMAGES: phf::Map<&'static str, &'static [u8]> = {};",
         map_builder.build()
     )
     .unwrap();
-
-    writeln!(&mut file, ";\n").unwrap();
 }
