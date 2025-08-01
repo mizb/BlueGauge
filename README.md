@@ -10,7 +10,9 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 ## 功能
 
 - [x] 设置：蓝牙设备电量作为托盘图标  
-    支持自定义图标，在软件目录下创建一个assets文件夹，然后添加0.png 至 100.png照片即可（总共101张，缺1不可）。
+    支持自定义图标：  
+        (1) 打开托盘菜单--`设置`--`打开配置`--`font_name = "系统字体名称"` + `font_color = "十六进制颜色代码，如#FFFFFF、#00D26A"`，设置好后重新启动 BlueGauge   
+        (2) 在软件目录下创建一个`assets`文件夹，然后添加`0.png` 至 `100.png`照片即可。  
     ![image](screenshots/battery.png)
 - [x] 设置：开机自启动
 - [x] 设置：更新信息间隔时间
