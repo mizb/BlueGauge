@@ -336,16 +336,16 @@ impl ApplicationHandler<UserEvent> for App {
 
                                 if have_custom_icons {
                                     *original_tray_icon_source = TrayIconSource::BatteryCustom {
-                                        id: show_battery_icon_bt_id.to_owned()
+                                        id: show_battery_icon_bt_id.to_owned(),
                                     };
                                 } else {
                                     *original_tray_icon_source = TrayIconSource::BatteryDefault {
-                                        id: show_battery_icon_bt_id.to_owned()
+                                        id: show_battery_icon_bt_id.to_owned(),
                                     };
                                 };
                             }
-                            TrayIconSource::BatteryCustom{ .. }
-                            | TrayIconSource::BatteryDefault{ .. } => {
+                            TrayIconSource::BatteryCustom { .. }
+                            | TrayIconSource::BatteryDefault { .. } => {
                                 if is_checked {
                                     original_tray_icon_source.update_id(show_battery_icon_bt_id);
                                 } else {

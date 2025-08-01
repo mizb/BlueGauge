@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 struct TomlConfig {
     #[serde(rename = "TrayConfig")]
     tray_config: TrayConfigToml,
-    
+
     #[serde(rename = "NotifyOptions")]
     notify_options: NotifyOptionsToml,
 }
@@ -22,7 +22,7 @@ struct TrayConfigToml {
     show_disconnected: bool,
     truncate_name: bool,
     prefix_battery: bool,
-    
+
     #[serde(rename = "TrayIconSource")]
     tray_icon_source: TrayIconSource,
 }
@@ -41,8 +41,12 @@ struct NotifyOptionsToml {
 #[serde(tag = "type", content = "config")]
 pub enum TrayIconSource {
     App,
-    BatteryCustom { id: String },
-    BatteryDefault { id: String },
+    BatteryCustom {
+        id: String,
+    },
+    BatteryDefault {
+        id: String,
+    },
     BatteryFont {
         id: String,
         font_name: String,
@@ -61,7 +65,6 @@ impl TrayIconSource {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct NotifyOptions {
@@ -174,9 +177,21 @@ impl Config {
         let toml_config = TomlConfig {
             tray_config: TrayConfigToml {
                 update_interval: self.tray_config.update_interval.load(Ordering::Relaxed),
-                show_disconnected: self.tray_config.tooltip_options.show_disconnected.load(Ordering::Relaxed),
-                truncate_name: self.tray_config.tooltip_options.truncate_name.load(Ordering::Relaxed),
-                prefix_battery: self.tray_config.tooltip_options.prefix_battery.load(Ordering::Relaxed),
+                show_disconnected: self
+                    .tray_config
+                    .tooltip_options
+                    .show_disconnected
+                    .load(Ordering::Relaxed),
+                truncate_name: self
+                    .tray_config
+                    .tooltip_options
+                    .truncate_name
+                    .load(Ordering::Relaxed),
+                prefix_battery: self
+                    .tray_config
+                    .tooltip_options
+                    .prefix_battery
+                    .load(Ordering::Relaxed),
                 tray_icon_source,
             },
             notify_options: NotifyOptionsToml {
@@ -189,8 +204,10 @@ impl Config {
             },
         };
 
-        let toml_str = toml::to_string_pretty(&toml_config).expect("Failed to serialize TomlConfig structure as a String of TOML.");
-        std::fs::write(&self.config_path, toml_str).expect("Failed to TOML String to BlueGauge.toml");
+        let toml_str = toml::to_string_pretty(&toml_config)
+            .expect("Failed to serialize TomlConfig structure as a String of TOML.");
+        std::fs::write(&self.config_path, toml_str)
+            .expect("Failed to TOML String to BlueGauge.toml");
     }
 
     fn create_toml(config_path: PathBuf) -> Result<Self> {
@@ -222,7 +239,9 @@ impl Config {
                 update_interval: AtomicU64::new(default_config.tray_config.update_interval),
                 tray_icon_source: Mutex::new(default_config.tray_config.tray_icon_source),
                 tooltip_options: TooltipOptions {
-                    show_disconnected: AtomicBool::new(default_config.tray_config.show_disconnected),
+                    show_disconnected: AtomicBool::new(
+                        default_config.tray_config.show_disconnected,
+                    ),
                     truncate_name: AtomicBool::new(default_config.tray_config.truncate_name),
                     prefix_battery: AtomicBool::new(default_config.tray_config.prefix_battery),
                 },

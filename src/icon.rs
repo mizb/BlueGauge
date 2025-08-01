@@ -53,19 +53,21 @@ pub fn load_battery_icon(
 
     match tray_icon_source {
         TrayIconSource::App => default_icon(),
-        TrayIconSource::BatteryDefault { ref id } | TrayIconSource::BatteryCustom { ref id } | TrayIconSource::BatteryFont { ref id, ..} => {
-            bluetooth_devices_info
-                .iter()
-                .find(|i| i.id == *id)
-                .map_or(get_icon_from_custom(250), |i| {
-                    match tray_icon_source {
-                        TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
-                        TrayIconSource::BatteryDefault { .. } => get_icon_from_image(i.battery),
-                        TrayIconSource::BatteryFont {id: _ , font_name, font_color} => get_icon_from_font(i.battery, &font_name, font_color),
-                        _ => get_icon_from_custom(250)
-                    }
-                })
-        }
+        TrayIconSource::BatteryCustom { ref id }
+        | TrayIconSource::BatteryDefault { ref id }
+        | TrayIconSource::BatteryFont { ref id, .. } => bluetooth_devices_info
+            .iter()
+            .find(|i| i.id == *id)
+            .map_or(get_icon_from_image(250), |i| match tray_icon_source {
+                TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
+                TrayIconSource::BatteryDefault { .. } => get_icon_from_image(i.battery),
+                TrayIconSource::BatteryFont {
+                    id: _,
+                    font_name,
+                    font_color,
+                } => get_icon_from_font(i.battery, &font_name, font_color),
+                _ => get_icon_from_image(250),
+            }),
     }
 }
 
@@ -92,19 +94,26 @@ fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
 }
 
 fn get_icon_from_font(battery_level: u8, font_name: &str, color: Option<String>) -> Result<Icon> {
-    let (icon_rgba, icon_width, icon_height) = render_battery_icon(battery_level, font_name, color)?;
+    let (icon_rgba, icon_width, icon_height) =
+        render_battery_icon(battery_level, font_name, color)?;
     Icon::from_rgba(icon_rgba, icon_width, icon_height)
         .map_err(|e| anyhow!("Failed to get Icon - {e}"))
 }
 
-fn render_battery_icon(battery_level: u8, font_name: &str, font_color: Option<String>) -> Result<(Vec<u8>, u32, u32)> {
+fn render_battery_icon(
+    battery_level: u8,
+    font_name: &str,
+    font_color: Option<String>,
+) -> Result<(Vec<u8>, u32, u32)> {
     let indicator = if battery_level == 250 {
         String::from("X")
     } else {
         battery_level.to_string()
     };
 
-    let font_color = font_color.map_or(get_system_theme().get_font_color(), |c| c.parse::<u32>().unwrap());
+    let font_color = font_color.map_or(get_system_theme().get_font_color(), |c| {
+        c.parse::<u32>().unwrap()
+    });
 
     let width = 32;
     let height = 32;
@@ -121,7 +130,7 @@ fn render_battery_icon(battery_level: u8, font_name: &str, font_color: Option<St
     let mut layout;
     let mut font_size = match battery_level {
         100 => 20.0,
-        b  if b < 10 => 36.0,
+        b if b < 10 => 36.0,
         _ => 32.0,
     };
     let text = piet.text();
