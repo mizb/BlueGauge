@@ -161,7 +161,7 @@ impl ApplicationHandler<UserEvent> for App {
                             .map(|parent_path| parent_path.join("BlueGauge.toml"))
                             .expect("Failed to get config path");
                         let _ = std::process::Command::new("cmd")
-                            .args(&["/C", "notepad.exe", &config_path.to_string_lossy()])
+                            .args(["/C", "notepad.exe", &config_path.to_string_lossy()])
                             .spawn();
                     }
                     // 托盘设置：更新间隔
