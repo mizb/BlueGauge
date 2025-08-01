@@ -58,10 +58,10 @@ pub enum TrayIconSource {
 impl TrayIconSource {
     pub fn update_id(&mut self, new_id: &str) {
         match self {
-            TrayIconSource::App => (),
-            TrayIconSource::BatteryCustom { id } => *id = new_id.to_string(),
-            TrayIconSource::BatteryDefault { id } => *id = new_id.to_string(),
-            TrayIconSource::BatteryFont { id, .. } => *id = new_id.to_string(),
+            Self::App => (),
+            Self::BatteryCustom { id } => *id = new_id.to_string(),
+            Self::BatteryDefault { id } => *id = new_id.to_string(),
+            Self::BatteryFont { id, .. } => *id = new_id.to_string(),
         }
     }
 }
