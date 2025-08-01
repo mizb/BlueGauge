@@ -44,9 +44,6 @@ pub enum TrayIconSource {
     BatteryCustom {
         id: String,
     },
-    BatteryDefault {
-        id: String,
-    },
     BatteryFont {
         id: String,
         font_name: String,
@@ -60,7 +57,6 @@ impl TrayIconSource {
         match self {
             Self::App => (),
             Self::BatteryCustom { id } => *id = new_id.to_string(),
-            Self::BatteryDefault { id } => *id = new_id.to_string(),
             Self::BatteryFont { id, .. } => *id = new_id.to_string(),
         }
     }
@@ -344,7 +340,6 @@ impl Config {
         match tray_icon_source {
             TrayIconSource::App => None,
             TrayIconSource::BatteryCustom { id } => Some(id),
-            TrayIconSource::BatteryDefault { id } => Some(id),
             TrayIconSource::BatteryFont { id, .. } => Some(id),
         }
     }

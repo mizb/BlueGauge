@@ -15,18 +15,11 @@ use crate::{
     config::{Config, TrayIconSource},
 };
 
-pub const ICON_DATA: &[u8] = include_bytes!("../assets/logo.ico");
+pub const LOGO_DATA: &[u8] = include_bytes!("../assets/logo.ico");
+const UNPAIRED_ICON_DATA: &[u8] = include_bytes!("../assets/unpaired.png");
 const PERSONALIZE_REGISTRY_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-// const APPS_USE_LIGHT_THEME_REGISTRY_KEY: &str = "AppsUseLightTheme";
 const SYSTEM_USES_LIGHT_THEME_REGISTRY_KEY: &str = "SystemUsesLightTheme";
-
-include!(concat!(env!("OUT_DIR"), "/images.rs"));
-fn get_image_data(name: &str) -> Option<&'static [u8]> {
-    // 使用 phf::Map 的 .get() 方法来查找数据
-    // .copied() 将 Option<&&'static [u8]> 转换为 Option<&'static [u8]>
-    IMAGES.get(name).copied()
-}
 
 pub fn load_icon(icon_date: &[u8]) -> Result<Icon> {
     let (icon_rgba, icon_width, icon_height) = {
@@ -45,7 +38,7 @@ pub fn load_battery_icon(
     bluetooth_devices_info: &HashSet<BluetoothInfo>,
 ) -> Result<Icon> {
     let default_icon =
-        || load_icon(ICON_DATA).map_err(|e| anyhow!("Failed to load app icon - {e}"));
+        || load_icon(LOGO_DATA).map_err(|e| anyhow!("Failed to load app icon - {e}"));
 
     let tray_icon_source = {
         let lock = config.tray_config.tray_icon_source.lock().unwrap();
@@ -54,29 +47,21 @@ pub fn load_battery_icon(
 
     match tray_icon_source {
         TrayIconSource::App => default_icon(),
-        TrayIconSource::BatteryCustom { ref id }
-        | TrayIconSource::BatteryDefault { ref id }
-        | TrayIconSource::BatteryFont { ref id, .. } => bluetooth_devices_info
-            .iter()
-            .find(|i| i.id == *id)
-            .map_or(get_icon_from_image(250), |i| match tray_icon_source {
-                TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
-                TrayIconSource::BatteryDefault { .. } => get_icon_from_image(i.battery),
-                TrayIconSource::BatteryFont {
-                    id: _,
-                    font_name,
-                    font_color,
-                } => get_icon_from_font(i.battery, &font_name, font_color),
-                _ => get_icon_from_image(250),
-            }),
+        TrayIconSource::BatteryCustom { ref id } | TrayIconSource::BatteryFont { ref id, .. } => {
+            bluetooth_devices_info.iter().find(|i| i.id == *id).map_or(
+                load_icon(UNPAIRED_ICON_DATA),
+                |i| match tray_icon_source {
+                    TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
+                    TrayIconSource::BatteryFont {
+                        id: _,
+                        font_name,
+                        font_color,
+                    } => get_icon_from_font(i.battery, &font_name, font_color),
+                    _ => load_icon(UNPAIRED_ICON_DATA),
+                },
+            )
+        }
     }
-}
-
-fn get_icon_from_image(battery_level: u8) -> Result<Icon> {
-    let image_name = format!("{battery_level}_{}", get_system_theme().get_theme_name());
-    let icon_data =
-        get_image_data(&image_name).ok_or(anyhow!("Failed to get {battery_level}.png"))?;
-    load_icon(icon_data)
 }
 
 fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
@@ -108,8 +93,8 @@ fn render_battery_font_icon(
 ) -> Result<(Vec<u8>, u32, u32)> {
     let indicator = battery_level.to_string();
 
-    let width = 32;
-    let height = 32;
+    let width = 64;
+    let height = 64;
 
     let mut device = Device::new().map_err(|e| anyhow!("Failed to get Device - {e}"))?;
 
@@ -120,12 +105,12 @@ fn render_battery_font_icon(
     let mut piet = bitmap_target.render_context();
 
     // Dynamically calculated font size
-    let font_color = font_color.unwrap_or(get_system_theme().get_font_color());
+    let font_color = font_color.unwrap_or(SystemTheme::get().get_font_color());
     let mut layout;
     let mut font_size = match battery_level {
-        100 => 20.0,
-        b if b < 10 => 36.0,
-        _ => 32.0,
+        100 => 42.0,
+        b if b < 10 => 70.0,
+        _ => 64.0,
     };
     let text = piet.text();
     loop {
@@ -167,32 +152,25 @@ enum SystemTheme {
 }
 
 impl SystemTheme {
+    fn get() -> Self {
+        let personalize_reg_key = RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(PERSONALIZE_REGISTRY_KEY, KEY_READ | KEY_WRITE)
+            .expect("This program requires Windows 10 14393 or above");
+
+        let theme_reg_value: u32 = personalize_reg_key
+            .get_value(SYSTEM_USES_LIGHT_THEME_REGISTRY_KEY)
+            .expect("This program requires Windows 10 14393 or above");
+
+        match theme_reg_value {
+            0 => SystemTheme::Dark,
+            _ => SystemTheme::Light,
+        }
+    }
+
     fn get_font_color(&self) -> String {
         match self {
-            Self::Dark => "#FFFFFFFF".to_owned(),
-            Self::Light => "#1F1F1FFF".to_owned(),
+            Self::Dark => "#FFFFFF".to_owned(),
+            Self::Light => "#1F1F1F".to_owned(),
         }
-    }
-
-    fn get_theme_name(&self) -> &str {
-        match self {
-            Self::Dark => "light",
-            Self::Light => "dark",
-        }
-    }
-}
-
-fn get_system_theme() -> SystemTheme {
-    let personalize_reg_key = RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey_with_flags(PERSONALIZE_REGISTRY_KEY, KEY_READ | KEY_WRITE)
-        .expect("This program requires Windows 10 14393 or above");
-
-    let theme_reg_value: u32 = personalize_reg_key
-        .get_value(SYSTEM_USES_LIGHT_THEME_REGISTRY_KEY)
-        .expect("This program requires Windows 10 14393 or above");
-
-    match theme_reg_value {
-        0 => SystemTheme::Dark,
-        _ => SystemTheme::Light,
     }
 }

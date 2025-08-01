@@ -16,7 +16,6 @@ tray-icon = "0.21"
 winit = "0.30"
 winreg = "0.55"
 piet-common = "0.7.0"
-phf = { version = "0.12", default-features = false }
 
 [dependencies.windows]
 version = "0.61"
@@ -53,9 +52,6 @@ features = [
 
 [build-dependencies]
 embed-resource = "3"
-phf = { version = "0.12", default-features = false }
-phf_codegen = "0.12"
-glob = "0.3"
 
 [profile.release]
 lto = "fat"

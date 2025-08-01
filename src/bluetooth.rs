@@ -99,11 +99,11 @@ pub fn get_bluetooth_info(
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth or Bluetooth LE devices found"
         )),
-        (0, _) => get_ble_info(ble_devices),
-        (_, 0) => get_btc_info(btc_devices),
+        (0, _) => dbg!(get_ble_info(ble_devices)),
+        (_, 0) => dbg!(get_btc_info(btc_devices)),
         (_, _) => {
-            let bt_info = get_btc_info(btc_devices)?;
-            let ble_info = get_ble_info(ble_devices)?;
+            let bt_info = dbg!(get_btc_info(btc_devices)?);
+            let ble_info = dbg!(get_ble_info(ble_devices)?);
             let combined_info = bt_info.into_iter().chain(ble_info).collect();
             Ok(combined_info)
         }
@@ -137,7 +137,7 @@ fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothIn
 
     btc_devices.into_iter().for_each(|btc_device| {
         let _ = process_btc_device(btc_device, &pnp_btc_devices_info)
-            .inspect_err(|e| println!("{e}"))
+            .inspect_err(|e| println!("\n{e}\n"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
     });
 
@@ -151,7 +151,7 @@ fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<Bluetooth
 
     results.into_iter().for_each(|r_ble_info| {
         let _ = r_ble_info
-            .inspect_err(|e| println!("{e}"))
+            .inspect_err(|e| println!("\n{e}\n"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
     });
 
@@ -263,20 +263,6 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
                     PnpDevicePropertyValue::Byte(v) => Some(v),
                     _ => None,
                 });
-
-            if cfg!(debug_assertions) {
-                use windows_sys::Win32::Devices::Properties::DEVPKEY_Device_Address;
-                let address = props
-                    .remove(&DEVPKEY_Device_Address.into())
-                    .and_then(|value| match value {
-                        PnpDevicePropertyValue::String(v) => Some(v),
-                        _ => None,
-                    });
-
-                println!(
-                    "Pnp Name: {name:?}\nPnp Battery: {battery_level:?}\nPnp Address: {address:?}\n"
-                );
-            }
 
             if let (Some(n), Some(b)) = (name, battery_level) {
                 pnp_btc_devices_info.push((n, b));

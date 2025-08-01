@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::bluetooth::{BluetoothInfo, find_bluetooth_devices, get_bluetooth_info};
 use crate::config::Config;
-use crate::icon::{ICON_DATA, load_battery_icon, load_icon};
+use crate::icon::{LOGO_DATA, load_battery_icon, load_icon};
 use crate::language::{Language, Localization};
 use crate::notify::app_notify;
 use crate::startup::get_startup_status;
@@ -231,7 +231,7 @@ pub fn create_tray(
 
     let icon = load_battery_icon(config, &bluetooth_info)
         .inspect_err(|e| app_notify(format!("Failed to get battery icon: {e}")))
-        .unwrap_or(load_icon(ICON_DATA)?);
+        .unwrap_or(load_icon(LOGO_DATA)?);
 
     let tray_icon = TrayIconBuilder::new()
         .with_menu_on_left_click(true)

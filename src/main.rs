@@ -342,13 +342,15 @@ impl ApplicationHandler<UserEvent> for App {
                                         id: show_battery_icon_bt_id.to_owned(),
                                     };
                                 } else {
-                                    *original_tray_icon_source = TrayIconSource::BatteryDefault {
+                                    *original_tray_icon_source = TrayIconSource::BatteryFont {
                                         id: show_battery_icon_bt_id.to_owned(),
+                                        font_name: "Arial".to_owned(),
+                                        font_color: None,
                                     };
                                 };
                             }
                             TrayIconSource::BatteryCustom { .. }
-                            | TrayIconSource::BatteryDefault { .. } => {
+                            | TrayIconSource::BatteryFont { .. } => {
                                 if is_checked {
                                     original_tray_icon_source.update_id(show_battery_icon_bt_id);
                                 } else {
