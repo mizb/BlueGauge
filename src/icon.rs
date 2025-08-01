@@ -18,7 +18,8 @@ use crate::{
 pub const ICON_DATA: &[u8] = include_bytes!("../assets/logo.ico");
 const PERSONALIZE_REGISTRY_KEY: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
-const APPS_USE_LIGHT_THEME_REGISTRY_KEY: &str = "AppsUseLightTheme";
+// const APPS_USE_LIGHT_THEME_REGISTRY_KEY: &str = "AppsUseLightTheme";
+const SYSTEM_USES_LIGHT_THEME_REGISTRY_KEY: &str = "SystemUsesLightTheme";
 
 include!(concat!(env!("OUT_DIR"), "/images.rs"));
 fn get_image_data(name: &str) -> Option<&'static [u8]> {
@@ -187,7 +188,7 @@ fn get_system_theme() -> SystemTheme {
         .expect("This program requires Windows 10 14393 or above");
 
     let theme_reg_value: u32 = personalize_reg_key
-        .get_value(APPS_USE_LIGHT_THEME_REGISTRY_KEY)
+        .get_value(SYSTEM_USES_LIGHT_THEME_REGISTRY_KEY)
         .expect("This program requires Windows 10 14393 or above");
 
     match theme_reg_value {
