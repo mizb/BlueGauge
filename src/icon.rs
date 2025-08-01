@@ -95,25 +95,17 @@ fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
 
 fn get_icon_from_font(battery_level: u8, font_name: &str, color: Option<String>) -> Result<Icon> {
     let (icon_rgba, icon_width, icon_height) =
-        render_battery_icon(battery_level, font_name, color)?;
+        render_battery_font_icon(battery_level, font_name, color)?;
     Icon::from_rgba(icon_rgba, icon_width, icon_height)
         .map_err(|e| anyhow!("Failed to get Icon - {e}"))
 }
 
-fn render_battery_icon(
+fn render_battery_font_icon(
     battery_level: u8,
     font_name: &str,
-    font_color: Option<String>,
+    font_color: Option<String>, // 格式：#123456、#123456FF
 ) -> Result<(Vec<u8>, u32, u32)> {
-    let indicator = if battery_level == 250 {
-        String::from("X")
-    } else {
-        battery_level.to_string()
-    };
-
-    let font_color = font_color.map_or(get_system_theme().get_font_color(), |c| {
-        c.parse::<u32>().unwrap()
-    });
+    let indicator = battery_level.to_string();
 
     let width = 32;
     let height = 32;
@@ -127,6 +119,7 @@ fn render_battery_icon(
     let mut piet = bitmap_target.render_context();
 
     // Dynamically calculated font size
+    let font_color = font_color.unwrap_or(get_system_theme().get_font_color());
     let mut layout;
     let mut font_size = match battery_level {
         100 => 20.0,
@@ -138,7 +131,7 @@ fn render_battery_icon(
         layout = text
             .new_text_layout(indicator.clone())
             .font(FontFamily::new_unchecked(font_name), font_size)
-            .text_color(Color::from_rgba32_u32(font_color)) // 0xffffff + alpha:00~ff
+            .text_color(Color::from_hex_str(&font_color)?)
             .build()
             .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
 
@@ -173,16 +166,16 @@ enum SystemTheme {
 }
 
 impl SystemTheme {
-    fn get_font_color(&self) -> u32 {
+    fn get_font_color(&self) -> String {
         match self {
-            SystemTheme::Dark => 0xFFFFFFFF,
-            SystemTheme::Light => 0x1F1F1FFF,
+            Self::Dark => "#FFFFFFFF".to_owned(),
+            Self::Light => "#1F1F1FFF".to_owned(),
         }
     }
 
     fn get_theme_name(&self) -> &str {
         match self {
-            SystemTheme::Dark => "light",
+            Self::Dark => "light",
             Self::Light => "dark",
         }
     }
