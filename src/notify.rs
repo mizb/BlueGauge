@@ -14,13 +14,11 @@ pub fn notify(title: impl AsRef<str>, text: impl AsRef<str>, mute: bool) {
 }
 
 pub fn app_notify(text: impl AsRef<str>) {
-    if !cfg!(debug_assertions) {
-        Toast::new(BLUETOOTH_APP_ID)
-            .title("BlueGauge")
-            .text1(text.as_ref())
-            .sound(Some(Sound::Default))
-            .duration(Duration::Short)
-            .show()
-            .expect("Failied to send notification");
-    }
+    Toast::new(BLUETOOTH_APP_ID)
+        .title("BlueGauge")
+        .text1(text.as_ref())
+        .sound(Some(Sound::Default))
+        .duration(Duration::Short)
+        .show()
+        .expect("Failied to send notification");
 }

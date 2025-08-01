@@ -124,10 +124,7 @@ fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothIn
                     if attempts >= max_retries {
                         return Err(e); // 达到最大重试次数，返回错误
                     }
-                    println!(
-                        "获取蓝牙设备信息失败: {}, 2秒后重试... (尝试 {}/{})",
-                        e, attempts, max_retries
-                    );
+                    println!("Failed to get Bluetooth device information: {e}, try again after 2 seconds... (try {attempts}/{max_retries})");
                     std::thread::sleep(std::time::Duration::from_secs(2));
                 }
             }

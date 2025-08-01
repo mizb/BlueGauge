@@ -1,8 +1,9 @@
 use std::{collections::HashSet, path::Path};
 
 use anyhow::{Context, Result, anyhow};
-// use font_kit::{family_name::FamilyName, properties::Properties, source::SystemSource};
-// use raqote::{DrawOptions, DrawTarget, SolidSource, Source};
+use piet_common::{
+    Color, Device, FontFamily, ImageFormat, RenderContext, Text, TextLayout, TextLayoutBuilder,
+};
 use tray_icon::Icon;
 use winreg::{
     RegKey,
@@ -52,31 +53,30 @@ pub fn load_battery_icon(
 
     match tray_icon_source {
         TrayIconSource::App => default_icon(),
-        TrayIconSource::BatteryDefault(ref id) | TrayIconSource::BatteryCustom(ref id) => {
-            let use_custom_font = matches!(tray_icon_source, TrayIconSource::BatteryCustom(_));
-
+        TrayIconSource::BatteryDefault { ref id } | TrayIconSource::BatteryCustom { ref id } | TrayIconSource::BatteryFont { ref id, ..} => {
             bluetooth_devices_info
                 .iter()
                 .find(|i| i.id == *id)
-                .map_or(get_icon_from_font(250, use_custom_font), |i| {
-                    get_icon_from_font(i.battery, use_custom_font)
+                .map_or(get_icon_from_custom(250), |i| {
+                    match tray_icon_source {
+                        TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
+                        TrayIconSource::BatteryDefault { .. } => get_icon_from_image(i.battery),
+                        TrayIconSource::BatteryFont {id: _ , font_name, font_color} => get_icon_from_font(i.battery, &font_name, font_color),
+                        _ => get_icon_from_custom(250)
+                    }
                 })
         }
     }
 }
 
-fn get_icon_from_font(battery_level: u8, use_custom_font: bool) -> Result<Icon> {
-    if battery_level == 250 || !use_custom_font {
-        let name = format!("{battery_level}_{}", get_system_theme().get_theme_name());
-        let icon_data =
-            get_image_data(&name).ok_or(anyhow!("Failed to get {battery_level}.png"))?;
-        return load_icon(icon_data);
+fn get_icon_from_image(battery_level: u8) -> Result<Icon> {
+    let image_name = format!("{battery_level}_{}", get_system_theme().get_theme_name());
+    let icon_data =
+        get_image_data(&image_name).ok_or(anyhow!("Failed to get {battery_level}.png"))?;
+    load_icon(icon_data)
+}
 
-        // let (icon_rgba, icon_width, icon_height) = render_battery_icon(battery_level)?;
-        // return Icon::from_rgba(icon_rgba, icon_width, icon_height)
-        //     .map_err(|e| anyhow!("Failed to get Icon - {e}"));
-    }
-
+fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
     let custom_battery_icon_path = std::env::current_exe()
         .ok()
         .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
@@ -91,47 +91,71 @@ fn get_icon_from_font(battery_level: u8, use_custom_font: bool) -> Result<Icon> 
     load_icon(&icon_data)
 }
 
-// fn render_battery_icon(battery_level: u8) -> Result<(Vec<u8>, u32, u32)> {
-//     let text = if battery_level == 250 {
-//         String::from("X")
-//     } else {
-//         battery_level.to_string()
-//     };
-//     let font_color = get_system_theme().get_font_color();
+fn get_icon_from_font(battery_level: u8, font_name: &str, color: Option<String>) -> Result<Icon> {
+    let (icon_rgba, icon_width, icon_height) = render_battery_icon(battery_level, font_name, color)?;
+    Icon::from_rgba(icon_rgba, icon_width, icon_height)
+        .map_err(|e| anyhow!("Failed to get Icon - {e}"))
+}
 
-//     // 图标尺寸（可以适配系统托盘）
-//     let width = 32;
-//     let height = 32;
+fn render_battery_icon(battery_level: u8, font_name: &str, font_color: Option<String>) -> Result<(Vec<u8>, u32, u32)> {
+    let indicator = if battery_level == 250 {
+        String::from("X")
+    } else {
+        battery_level.to_string()
+    };
 
-//     // 创建绘图目标
-//     let mut dt = DrawTarget::new(width, height);
+    let font_color = font_color.map_or(get_system_theme().get_font_color(), |c| c.parse::<u32>().unwrap());
 
-//     // 找系统字体（例如 Segoe UI）
-//     let font = SystemSource::new()
-//         .select_best_match(
-//             &[FamilyName::Title("Segoe UI".into()), FamilyName::Monospace],
-//             &Properties::new(),
-//         )?
-//         .load()?;
+    let width = 32;
+    let height = 32;
 
-//     // 设置字体大小
-//     let font_size = 20.0;
+    let mut device = Device::new().map_err(|e| anyhow!("Failed to get Device - {e}"))?;
 
-//     // 渲染文本
-//     dt.draw_text(
-//         &font,
-//         font_size,
-//         &text,
-//         raqote::Point::new(9.0, 24.0), // 坐标位置
-//         &Source::Solid(font_color),
-//         &DrawOptions::new(),
-//     );
+    let mut bitmap_target = device
+        .bitmap_target(width, height, 1.0)
+        .map_err(|e| anyhow!("Failed to create a new bitmap target. - {e}"))?;
 
-//     // 获取 RGBA 数据
-//     let data = dt.get_data_u8().to_vec();
+    let mut piet = bitmap_target.render_context();
 
-//     Ok((data, width as u32, height as u32))
-// }
+    // Dynamically calculated font size
+    let mut layout;
+    let mut font_size = match battery_level {
+        100 => 20.0,
+        b  if b < 10 => 36.0,
+        _ => 32.0,
+    };
+    let text = piet.text();
+    loop {
+        layout = text
+            .new_text_layout(indicator.clone())
+            .font(FontFamily::new_unchecked(font_name), font_size)
+            .text_color(Color::from_rgba32_u32(font_color)) // 0xffffff + alpha:00~ff
+            .build()
+            .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
+
+        if layout.size().width > width as f64 || layout.size().height > height as f64 {
+            break;
+        }
+        font_size += 2.0;
+    }
+
+    let (x, y) = (
+        (width as f64 - layout.size().width) / 2.0,
+        (height as f64 - layout.size().height) / 2.0,
+    );
+
+    piet.draw_text(&layout, (x, y));
+    piet.finish().map_err(|e| anyhow!("{e}"))?;
+    drop(piet);
+
+    let image_buf = bitmap_target.to_image_buf(ImageFormat::RgbaPremul).unwrap();
+
+    Ok((
+        image_buf.raw_pixels().to_vec(),
+        image_buf.width() as u32,
+        image_buf.height() as u32,
+    ))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum SystemTheme {
@@ -140,22 +164,12 @@ enum SystemTheme {
 }
 
 impl SystemTheme {
-    // fn get_font_color(&self) -> SolidSource {
-    //     match self {
-    //         SystemTheme::Dark => SolidSource {
-    //             r: 255,
-    //             g: 255,
-    //             b: 255,
-    //             a: 255,
-    //         },
-    //         SystemTheme::Light => SolidSource {
-    //             r: 0,
-    //             g: 0,
-    //             b: 0,
-    //             a: 255,
-    //         },
-    //     }
-    // }
+    fn get_font_color(&self) -> u32 {
+        match self {
+            SystemTheme::Dark => 0xFFFFFFFF,
+            SystemTheme::Light => 0x1F1F1FFF,
+        }
+    }
 
     fn get_theme_name(&self) -> &str {
         match self {

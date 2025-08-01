@@ -17,8 +17,10 @@ use tray_icon::{
 type TrayMenuResult = (
     Menu,
     Vec<CheckMenuItem>,
-    Vec<String>,            // Tooltip
-    HashSet<BluetoothInfo>, // Already Notified Set
+    // Tooltip
+    Vec<String>,
+    // Already Notified
+    HashSet<BluetoothInfo>,
 );
 
 pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
@@ -132,7 +134,7 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
     let tray_config_submenu =
         &Submenu::with_items(loc.tray_config, true, &tray_config_check_menus)?;
 
-    // 低电量通知菜单
+    // --- 低电量通知菜单 ---
     let low_battery = config.get_low_battery();
     let low_battery_items = [
         CheckMenuItem::with_id("0.01", "1%", true, low_battery == 0, None),
@@ -147,9 +149,9 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
         .iter()
         .map(|item| item as &dyn IsMenuItem)
         .collect();
-    let low_battery_submenu =
-        &Submenu::with_items(loc.low_battery, true, &low_battery_items)? as &dyn IsMenuItem;
-    // 通知选项菜单
+    let low_battery_submenu = &Submenu::with_items(loc.low_battery, true, &low_battery_items)?;
+
+    // --- 通知选项菜单 ---
     let notify_options_items = vec![
         ("mute", loc.mute, config.get_mute()),
         (
@@ -170,11 +172,12 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
         .iter()
         .map(|item| item as &dyn IsMenuItem)
         .collect();
-    notify_options_check_menus.insert(0, low_battery_submenu);
+    notify_options_check_menus.insert(0, low_battery_submenu as &dyn IsMenuItem);
+    // 创建通知选项子菜单
     let notify_options_submenu =
         &Submenu::with_items(loc.notify_options, true, &notify_options_check_menus)?;
 
-    // 设置菜单
+    // --- 设置菜单 ---
     let settings_items = &[
         tray_config_submenu as &dyn IsMenuItem,
         notify_options_submenu as &dyn IsMenuItem,
@@ -182,6 +185,7 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
     ];
     let menu_setting = Submenu::with_items(loc.settings, true, settings_items)?;
 
+    // --- 组装主菜单 ---
     tray_menu
         .prepend_items(&bluetooth_items)
         .context("Failed to prepend 'Bluetooth Items' to Tray Menu")?;
@@ -249,24 +253,27 @@ fn convert_tray_info(
     let should_prefix_battery = config.get_prefix_battery();
     let should_show_disconnected = config.get_show_disconnected();
 
-    let mut tray_tooltip_info: Vec<String> = Vec::new();
+    bluetooth_devices_info
+        .iter()
+        .filter_map(|blue_info| {
+            // 根据配置和设备状态决定是否包含在提示中
+            let include_in_tooltip = blue_info.status || should_show_disconnected;
 
-    bluetooth_devices_info.iter().for_each(|blue_info| {
-        let name = truncate_with_ellipsis(should_truncate_name, &blue_info.name, 10);
-        let battery = blue_info.battery;
-        let status_icon = if blue_info.status { "🟢" } else { "🔴" };
-        let info = if should_prefix_battery {
-            format!("{status_icon}{battery:3}% - {name}")
-        } else {
-            format!("{status_icon}{name} - {battery:3}%")
-        };
-        match blue_info.status {
-            true => tray_tooltip_info.push(info),
-            false if should_show_disconnected => tray_tooltip_info.push(info),
-            _ => (),
-        };
-    });
-    tray_tooltip_info
+            if include_in_tooltip {
+                let name = truncate_with_ellipsis(should_truncate_name, &blue_info.name, 10);
+                let battery = blue_info.battery;
+                let status_icon = if blue_info.status { "🟢" } else { "🔴" };
+                let info = if should_prefix_battery {
+                    format!("{status_icon}{battery:3}% - {name}")
+                } else {
+                    format!("{status_icon}{name} - {battery:3}%")
+                };
+                Some(info)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn truncate_with_ellipsis(truncate_device_name: bool, name: &str, max_chars: usize) -> String {

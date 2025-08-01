@@ -71,7 +71,7 @@ struct App {
 
 impl Default for App {
     fn default() -> Self {
-        let config = Config::oepn().expect("Failed to open config");
+        let config = Config::open().expect("Failed to open config");
 
         let (tray, tray_check_menus, bluetooth_info) =
             create_tray(&config).expect("Failed to create tray");
@@ -185,18 +185,14 @@ impl ApplicationHandler<UserEvent> for App {
                                 .tray_config
                                 .update_interval
                                 .store(update_interval, Ordering::Relaxed);
-                            config
-                                .write_tray_config("update_interval", &update_interval.to_string());
+                            config.save();
                         } else {
                             let default_update_interval = 30;
                             config
                                 .tray_config
                                 .update_interval
                                 .store(default_update_interval, Ordering::Relaxed);
-                            config.write_tray_config(
-                                "update_interval",
-                                &default_update_interval.to_string(),
-                            );
+                            config.save();
 
                             // 找到并选中默认项
                             if let Some(default_item) = update_interval_items
@@ -244,17 +240,14 @@ impl ApplicationHandler<UserEvent> for App {
                                 .notify_options
                                 .low_battery
                                 .store(low_battery, Ordering::Relaxed);
-                            config.write_notify_options("low_battery", &low_battery.to_string());
+                            config.save();
                         } else {
                             let default_low_battery = 15;
                             config
                                 .notify_options
                                 .low_battery
                                 .store(default_low_battery, Ordering::Relaxed);
-                            config.write_notify_options(
-                                "low_battery",
-                                &default_low_battery.to_string(),
-                            );
+                            config.save();
 
                             // 找到并选中默认项
                             if let Some(default_item) =
@@ -273,10 +266,10 @@ impl ApplicationHandler<UserEvent> for App {
                         {
                             if item.is_checked() {
                                 config.notify_options.update(menu_event_id, true);
-                                config.write_notify_options(menu_event_id, "true");
+                                config.save();
                             } else {
                                 config.notify_options.update(menu_event_id, false);
-                                config.write_notify_options(menu_event_id, "false");
+                                config.save();
                             }
                         }
                     }
@@ -288,10 +281,10 @@ impl ApplicationHandler<UserEvent> for App {
                         {
                             if item.is_checked() {
                                 config.tray_config.update(menu_event_id, true);
-                                config.write_tray_config(menu_event_id, "true");
+                                config.save();
                             } else {
                                 config.tray_config.update(menu_event_id, false);
-                                config.write_tray_config(menu_event_id, "false");
+                                config.save();
                             }
                         }
 
@@ -327,10 +320,10 @@ impl ApplicationHandler<UserEvent> for App {
                             item.set_checked(should_check);
                         });
 
-                        let mut tray_icon_source =
+                        let mut original_tray_icon_source =
                             config.tray_config.tray_icon_source.lock().unwrap();
 
-                        match tray_icon_source.deref() {
+                        match original_tray_icon_source.deref() {
                             TrayIconSource::App if is_checked => {
                                 let have_custom_icons = std::env::current_exe()
                                     .ok()
@@ -341,34 +334,29 @@ impl ApplicationHandler<UserEvent> for App {
                                     })
                                     .unwrap_or(false);
 
-                                *tray_icon_source = if have_custom_icons {
-                                    TrayIconSource::BatteryCustom(
-                                        show_battery_icon_bt_id.to_string(),
-                                    )
+                                if have_custom_icons {
+                                    *original_tray_icon_source = TrayIconSource::BatteryCustom {
+                                        id: show_battery_icon_bt_id.to_owned()
+                                    };
                                 } else {
-                                    TrayIconSource::BatteryDefault(
-                                        show_battery_icon_bt_id.to_string(),
-                                    )
+                                    *original_tray_icon_source = TrayIconSource::BatteryDefault {
+                                        id: show_battery_icon_bt_id.to_owned()
+                                    };
                                 };
-
-                                config
-                                    .write_tray_config("tray_icon_source", show_battery_icon_bt_id);
                             }
-                            TrayIconSource::BatteryCustom(_)
-                            | TrayIconSource::BatteryDefault(_) => {
+                            TrayIconSource::BatteryCustom{ .. }
+                            | TrayIconSource::BatteryDefault{ .. } => {
                                 if is_checked {
-                                    tray_icon_source.update_id(show_battery_icon_bt_id);
-                                    config.write_tray_config(
-                                        "tray_icon_source",
-                                        show_battery_icon_bt_id,
-                                    );
+                                    original_tray_icon_source.update_id(show_battery_icon_bt_id);
                                 } else {
-                                    *tray_icon_source = TrayIconSource::App;
-                                    config.write_tray_config("tray_icon_source", "");
+                                    *original_tray_icon_source = TrayIconSource::App;
                                 }
                             }
-                            _ => (),
+                            _ => return,
                         }
+                        // 释放锁，避免在Config的svae发生死锁.
+                        drop(original_tray_icon_source);
+                        config.save();
                         config.force_update.store(true, Ordering::Release);
                     }
                 }
@@ -400,7 +388,7 @@ impl ApplicationHandler<UserEvent> for App {
                 ) {
                     e.expect("Failed to compare bluetooth info");
                 } else {
-                    // 避免菜单事件使配置更新后，因蓝牙信息无更新而不执行后续更新代码
+                    // 避免菜单事件或配置更新后，因蓝牙信息无变化而不执行后续更新代码
                     if !config.force_update.swap(false, Ordering::Acquire) {
                         return;
                     }

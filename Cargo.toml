@@ -8,14 +8,14 @@ repository = "https://github.com/iKineticate/BlueGauge"
 [dependencies]
 anyhow = "1"
 image = "0.25"
-rust-ini = "0.21"
+serde= { version = "1.0", features = ["derive"] }
+toml = "0.9"
 windows_pnp = { path = "libs/windows_pnp" }
 tauri-winrt-notification = "0.7"
 tray-icon = "0.21"
 winit = "0.30"
 winreg = "0.55"
-# raqote = "0.8"
-# font-kit = "0.14"
+piet-common = "0.7.0"
 phf = { version = "0.12", default-features = false }
 
 [dependencies.windows]
