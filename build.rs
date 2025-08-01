@@ -43,7 +43,7 @@ fn build_battery_icons_bytes() {
             let key = path.file_stem().unwrap().to_str().unwrap().to_string();
             let value_path = path.to_str().unwrap().replace('\\', "/");
 
-            map_builder.entry(key, format!("include_bytes!(\"{}\")", value_path));
+            map_builder.entry(key, format!("include_bytes!(\"{value_path}\")"));
         }
     }
 
