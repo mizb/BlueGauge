@@ -8,7 +8,9 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 ## Function
 
 - [x] Setting：Bluetooth Device power as tray icon  
-    Support custom icons, create an assets folder in the software directory, and then add 0.png to 100.png photos (101 photos in total).
+    Support custom icons:   
+        (1) open tray menu -- `Settings` -- `Open Config` -- `font_name = "System Font Nmae"` + `font_color = "Hex color code，e.g. #FFFFFF、#00D26A"`,  restart BlueGauge after setting   
+        (2) create an assets folder in the software directory, and then add 0.png to 100.png pictures.  
     ![image](screenshots/battery.png)
 - [x] Setting：Auto start
 - [x] Setting：Update interval
