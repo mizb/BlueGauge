@@ -154,6 +154,16 @@ impl ApplicationHandler<UserEvent> for App {
                             set_startup(item.is_checked()).expect("Failed to set Launch at Startup")
                         }
                     }
+                    "open_config" => {
+                        let config_path = std::env::current_exe()
+                            .ok()
+                            .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
+                            .map(|parent_path| parent_path.join("BlueGauge.toml"))
+                            .expect("Failed to get config path");
+                        let _ = std::process::Command::new("cmd")
+                            .args(&["/C", "notepad.exe", &config_path.to_string_lossy()])
+                            .spawn();
+                    }
                     // 托盘设置：更新间隔
                     "15" | "30" | "60" | "300" | "600" | "1800" => {
                         // 只处理更新蓝牙信息间隔相关的菜单项
@@ -299,6 +309,7 @@ impl ApplicationHandler<UserEvent> for App {
                             "quit",
                             "force_update",
                             "startup",
+                            "open_config",
                             "15", "30", "60", "300", "600", "1800",
                             "0.01", "0.05", "0.1",  "0.15", "0.2", "0.25",
                             "mute", "disconnection", "reconnection", "added", "removed",
@@ -345,7 +356,7 @@ impl ApplicationHandler<UserEvent> for App {
                                     *original_tray_icon_source = TrayIconSource::BatteryFont {
                                         id: show_battery_icon_bt_id.to_owned(),
                                         font_name: "Arial".to_owned(),
-                                        font_color: None,
+                                        font_color: Some("FollowSystemTheme".to_owned()),
                                     };
                                 };
                             }

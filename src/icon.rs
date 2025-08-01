@@ -79,9 +79,9 @@ fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
     load_icon(&icon_data)
 }
 
-fn get_icon_from_font(battery_level: u8, font_name: &str, color: Option<String>) -> Result<Icon> {
+fn get_icon_from_font(battery_level: u8, font_name: &str, font_color: Option<String>) -> Result<Icon> {
     let (icon_rgba, icon_width, icon_height) =
-        render_battery_font_icon(battery_level, font_name, color)?;
+        render_battery_font_icon(battery_level, font_name, font_color)?;
     Icon::from_rgba(icon_rgba, icon_width, icon_height)
         .map_err(|e| anyhow!("Failed to get Icon - {e}"))
 }
@@ -105,7 +105,7 @@ fn render_battery_font_icon(
     let mut piet = bitmap_target.render_context();
 
     // Dynamically calculated font size
-    let font_color = font_color.unwrap_or(SystemTheme::get().get_font_color());
+    let font_color = font_color.and_then(|c| c.ne("FollowSystemTheme").then_some(c)).unwrap_or(SystemTheme::get().get_font_color());
     let mut layout;
     let mut font_size = match battery_level {
         100 => 42.0,

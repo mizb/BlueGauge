@@ -39,7 +39,7 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
         Some(loc.about),
         Some(AboutMetadata {
             name: Some("BlueGauge".to_owned()),
-            version: Some("0.2.2".to_owned()),
+            version: Some("0.2.5".to_owned()),
             authors: Some(vec!["iKineticate".to_owned()]),
             website: Some("https://github.com/iKineticate/BlueGauge".to_owned()),
             ..Default::default()
@@ -81,6 +81,9 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
     let should_startup = get_startup_status()?;
     let menu_startup = &CheckMenuItem::with_id("startup", loc.startup, true, should_startup, None);
     tray_check_menus.push(menu_startup.clone());
+
+    // 打开配置菜单
+    let menu_open_config = &MenuItem::with_id("open_config", loc.open_config, true, None);
 
     // 更新间隔菜单
     let update_interval = config.get_update_interval();
@@ -182,6 +185,7 @@ pub fn create_menu(config: &Config) -> Result<TrayMenuResult> {
         tray_config_submenu as &dyn IsMenuItem,
         notify_options_submenu as &dyn IsMenuItem,
         menu_startup as &dyn IsMenuItem,
+        menu_open_config as &dyn IsMenuItem,
     ];
     let menu_setting = Submenu::with_items(loc.settings, true, settings_items)?;
 
