@@ -90,7 +90,7 @@ impl Default for App {
 #[derive(Debug)]
 enum UserEvent {
     MenuEvent(MenuEvent),
-    UpdateTray,
+    UpdateTray(bool), // bool: Force Update
 }
 
 impl App {
@@ -109,15 +109,18 @@ impl ApplicationHandler<UserEvent> for App {
             loop {
                 let update_interval = config.get_update_interval();
 
+                let mut need_force_update = false;
+
                 for _ in 0..update_interval {
                     std::thread::sleep(std::time::Duration::from_secs(1));
-                    if config.force_update.swap(false, Ordering::Acquire) {
+                    if config.force_update.swap(false, Ordering::SeqCst) {
+                        need_force_update = true;
                         break;
                     }
                 }
 
                 proxy
-                    .send_event(UserEvent::UpdateTray)
+                    .send_event(UserEvent::UpdateTray(need_force_update))
                     .expect("Failed to send UpdateTray Event");
             }
         });
@@ -143,7 +146,7 @@ impl ApplicationHandler<UserEvent> for App {
                 let menu_event_id = event.id().as_ref();
                 match menu_event_id {
                     "quit" => event_loop.exit(),
-                    "force_update" => config.force_update.store(true, Ordering::Release),
+                    "force_update" => config.force_update.store(true, Ordering::SeqCst),
                     "startup" => {
                         if let Some(item) =
                             tray_check_menus.iter().find(|item| item.id() == "startup")
@@ -203,7 +206,7 @@ impl ApplicationHandler<UserEvent> for App {
                             }
                         }
 
-                        config.force_update.store(true, Ordering::Release);
+                        config.force_update.store(true, Ordering::SeqCst);
                     }
                     // 通知设置：低电量
                     "0.01" | "0.05" | "0.1" | "0.15" | "0.2" | "0.25" => {
@@ -288,7 +291,7 @@ impl ApplicationHandler<UserEvent> for App {
                             }
                         }
 
-                        config.force_update.store(true, Ordering::Release);
+                        config.force_update.store(true, Ordering::SeqCst);
                     }
                     _ => {
                         #[rustfmt::skip]
@@ -357,11 +360,11 @@ impl ApplicationHandler<UserEvent> for App {
                         // 释放锁，避免在Config的svae发生死锁.
                         drop(original_tray_icon_source);
                         config.save();
-                        config.force_update.store(true, Ordering::Release);
+                        config.force_update.store(true, Ordering::SeqCst);
                     }
                 }
             }
-            UserEvent::UpdateTray => {
+            UserEvent::UpdateTray(need_force_update) => {
                 let bluetooth_devices = match find_bluetooth_devices() {
                     Ok(devices) => devices,
                     Err(e) => {
@@ -389,7 +392,7 @@ impl ApplicationHandler<UserEvent> for App {
                     e.expect("Failed to compare bluetooth info");
                 } else {
                     // 避免菜单事件或配置更新后，因蓝牙信息无变化而不执行后续更新代码
-                    if !config.force_update.swap(false, Ordering::Acquire) {
+                    if !need_force_update {
                         return;
                     }
                 }
