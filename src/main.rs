@@ -111,7 +111,7 @@ impl ApplicationHandler<UserEvent> for App {
 
                 for _ in 0..update_interval {
                     std::thread::sleep(std::time::Duration::from_secs(1));
-                    if config.force_update.load(Ordering::Acquire) {
+                    if config.force_update.swap(false, Ordering::Acquire) {
                         break;
                     }
                 }
