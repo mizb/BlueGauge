@@ -18,7 +18,7 @@ use crate::config::*;
 use crate::icon::load_battery_icon;
 use crate::notify::app_notify;
 use crate::startup::set_startup;
-use crate::tray::{create_menu, create_tray, convert_tray_info};
+use crate::tray::{convert_tray_info, create_menu, create_tray};
 
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -73,10 +73,9 @@ impl Default for App {
     fn default() -> Self {
         let config = Config::open().expect("Failed to open config");
 
-        let bluetooth_devices = find_bluetooth_devices()
-            .expect("Failed to find bluetooth devices");
-        let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices)
-            .expect("Failed to get bluetooth devices info");
+        let bluetooth_devices = find_bluetooth_devices().expect("Failed to find bluetooth devices");
+        let bluetooth_devices_info =
+            get_bluetooth_info(bluetooth_devices).expect("Failed to get bluetooth devices info");
 
         let (tray, tray_check_menus) =
             create_tray(&config, &bluetooth_devices_info).expect("Failed to create tray");

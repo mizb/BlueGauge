@@ -78,7 +78,10 @@ impl CreateMenuItem {
         Ok(bluetooth_check_items)
     }
 
-    fn update_interval(update_interval: u64, tray_check_menus: &mut Vec<CheckMenuItem>) -> [CheckMenuItem; 6] {
+    fn update_interval(
+        update_interval: u64,
+        tray_check_menus: &mut Vec<CheckMenuItem>,
+    ) -> [CheckMenuItem; 6] {
         let update_interval_items = [
             CheckMenuItem::with_id("15", "15s", true, update_interval == 15, None),
             CheckMenuItem::with_id("30", "30s", true, update_interval == 30, None),
@@ -91,17 +94,25 @@ impl CreateMenuItem {
         update_interval_items
     }
 
-    fn set_tray_tooltip(config: &Config, loc: &Localization, tray_check_menus: &mut Vec<CheckMenuItem>) -> [CheckMenuItem; 3] {
+    #[rustfmt::skip]
+    fn set_tray_tooltip(
+        config: &Config,
+        loc: &Localization,
+        tray_check_menus: &mut Vec<CheckMenuItem>,
+    ) -> [CheckMenuItem; 3] {
         let menu_set_tray_tooltip = [
             CheckMenuItem::with_id("show_disconnected", loc.show_disconnected, true, config.get_show_disconnected(), None),
             CheckMenuItem::with_id("truncate_name", loc.truncate_name, true, config.get_truncate_name(), None),
-            CheckMenuItem::with_id("prefix_battery", loc.prefix_battery, true, config.get_prefix_battery(), None)
+            CheckMenuItem::with_id("prefix_battery", loc.prefix_battery, true, config.get_prefix_battery(), None),
         ];
         tray_check_menus.extend(menu_set_tray_tooltip.iter().cloned());
         menu_set_tray_tooltip
     }
 
-    fn notify_low_battery(low_battery: u8, tray_check_menus: &mut Vec<CheckMenuItem>) -> [CheckMenuItem; 6] {
+    fn notify_low_battery(
+        low_battery: u8,
+        tray_check_menus: &mut Vec<CheckMenuItem>,
+    ) -> [CheckMenuItem; 6] {
         let menu_low_battery = [
             CheckMenuItem::with_id("0.01", "1%", true, low_battery == 0, None),
             CheckMenuItem::with_id("0.05", "5%", true, low_battery == 5, None),
@@ -114,7 +125,12 @@ impl CreateMenuItem {
         menu_low_battery
     }
 
-    fn notify_device_change(config: &Config, loc: &Localization, tray_check_menus: &mut Vec<CheckMenuItem>) -> [CheckMenuItem; 5] {
+    #[rustfmt::skip]
+    fn notify_device_change(
+        config: &Config,
+        loc: &Localization,
+        tray_check_menus: &mut Vec<CheckMenuItem>,
+    ) -> [CheckMenuItem; 5] {
         let menu_device_change = [
             CheckMenuItem::with_id("mute", loc.mute, true, config.get_mute(), None),
             CheckMenuItem::with_id("disconnection", loc.disconnection, true, config.get_disconnection(), None),
@@ -127,7 +143,10 @@ impl CreateMenuItem {
     }
 }
 
-pub fn create_menu(config: &Config, bluetooth_devices_info: &HashSet<BluetoothInfo>) -> Result<(Menu, Vec<CheckMenuItem>)> {
+pub fn create_menu(
+    config: &Config,
+    bluetooth_devices_info: &HashSet<BluetoothInfo>,
+) -> Result<(Menu, Vec<CheckMenuItem>)> {
     let language = Language::get_system_language();
     let loc = Localization::get(language);
 
@@ -143,7 +162,8 @@ pub fn create_menu(config: &Config, bluetooth_devices_info: &HashSet<BluetoothIn
 
     let menu_force_update = CreateMenuItem::force_update(loc.force_update);
 
-    let menu_bluetooth_devicess = CreateMenuItem::bluetooth_devices(config, &mut tray_check_menus, &bluetooth_devices_info)?;
+    let menu_bluetooth_devicess =
+        CreateMenuItem::bluetooth_devices(config, &mut tray_check_menus, bluetooth_devices_info)?;
     let menu_bluetooth_devicess: Vec<&dyn IsMenuItem> = menu_bluetooth_devicess
         .iter()
         .map(|item| item as &dyn IsMenuItem)
@@ -154,7 +174,8 @@ pub fn create_menu(config: &Config, bluetooth_devices_info: &HashSet<BluetoothIn
     let menu_open_config = &CreateMenuItem::open_config(loc.open_config);
 
     let menu_tray_options = {
-        let menu_update_interval = CreateMenuItem::update_interval(config.get_update_interval(), &mut tray_check_menus);
+        let menu_update_interval =
+            CreateMenuItem::update_interval(config.get_update_interval(), &mut tray_check_menus);
         let menu_update_interval: Vec<&dyn IsMenuItem> = menu_update_interval
             .iter()
             .map(|item| item as &dyn IsMenuItem)
@@ -166,31 +187,39 @@ pub fn create_menu(config: &Config, bluetooth_devices_info: &HashSet<BluetoothIn
             &menu_update_interval,
         )? as &dyn IsMenuItem;
 
-        let menu_set_tray_tooltip = CreateMenuItem::set_tray_tooltip(config, &loc, &mut tray_check_menus);
+        let menu_set_tray_tooltip =
+            CreateMenuItem::set_tray_tooltip(config, loc, &mut tray_check_menus);
 
         let mut menu_tray_options: Vec<&dyn IsMenuItem> = Vec::new();
         menu_tray_options.push(menu_update_interval as &dyn IsMenuItem);
-        menu_tray_options.extend(menu_set_tray_tooltip
-            .iter()
-            .map(|item| item as &dyn IsMenuItem));
+        menu_tray_options.extend(
+            menu_set_tray_tooltip
+                .iter()
+                .map(|item| item as &dyn IsMenuItem),
+        );
         &Submenu::with_items(loc.tray_config, true, &menu_tray_options)?
     };
 
     let menu_notify_options = {
-        let menu_notify_low_battery = CreateMenuItem::notify_low_battery(config.get_low_battery(), &mut tray_check_menus);
+        let menu_notify_low_battery =
+            CreateMenuItem::notify_low_battery(config.get_low_battery(), &mut tray_check_menus);
         let menu_notify_low_battery: Vec<&dyn IsMenuItem> = menu_notify_low_battery
             .iter()
             .map(|item| item as &dyn IsMenuItem)
             .collect();
-        let menu_notify_low_battery = &Submenu::with_items(loc.low_battery, true, &menu_notify_low_battery)?;
+        let menu_notify_low_battery =
+            &Submenu::with_items(loc.low_battery, true, &menu_notify_low_battery)?;
 
-        let menu_notify_device_change = CreateMenuItem::notify_device_change(config, &loc, &mut tray_check_menus);
+        let menu_notify_device_change =
+            CreateMenuItem::notify_device_change(config, loc, &mut tray_check_menus);
 
         let mut menu_notify_options: Vec<&dyn IsMenuItem> = Vec::new();
         menu_notify_options.push(menu_notify_low_battery as &dyn IsMenuItem);
-        menu_notify_options.extend(menu_notify_device_change
-            .iter()
-            .map(|item| item as &dyn IsMenuItem));
+        menu_notify_options.extend(
+            menu_notify_device_change
+                .iter()
+                .map(|item| item as &dyn IsMenuItem),
+        );
         &Submenu::with_items(loc.notify_options, true, &menu_notify_options)?
     };
 
@@ -241,11 +270,11 @@ pub fn create_tray(
     let (tray_menu, tray_check_menus) =
         create_menu(config, bluetooth_devices_info).map_err(|e| anyhow!("Failed to create menu. - {e}"))?;
 
-    let icon = load_battery_icon(config, &bluetooth_devices_info)
+    let icon = load_battery_icon(config, bluetooth_devices_info)
         .inspect_err(|e| app_notify(format!("Failed to get battery icon: {e}")))
         .unwrap_or(load_icon(LOGO_DATA)?);
 
-    let bluetooth_tooltip_info = convert_tray_info(&bluetooth_devices_info, config);
+    let bluetooth_tooltip_info = convert_tray_info(bluetooth_devices_info, config);
 
     let tray_icon = TrayIconBuilder::new()
         .with_menu_on_left_click(true)
