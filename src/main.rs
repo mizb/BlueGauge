@@ -200,7 +200,7 @@ impl ApplicationHandler<UserEvent> for App {
                                 .store(update_interval, Ordering::Relaxed);
                             config.save();
                         } else {
-                            let default_update_interval = 30;
+                            let default_update_interval = 60;
                             config
                                 .tray_config
                                 .update_interval
