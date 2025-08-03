@@ -24,7 +24,7 @@ use windows_sys::Win32::{
 use crate::{
     config::Config,
     language::{Language, Localization},
-    notify::notify,
+    notify::{app_notify, notify},
 };
 
 #[allow(non_upper_case_globals)]
@@ -99,16 +99,35 @@ pub fn get_bluetooth_info(
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth or Bluetooth LE devices found"
         )),
-        (0, _) => dbg!(get_ble_info(ble_devices)),
+        (0, _) => dbg!(get_ble_info(ble_devices).or_else(|e| {
+            app_notify(format!("Warning: Failed to get BLE info: {e}"));
+            Ok(HashSet::new())
+        })),
         (_, 0) => dbg!(get_btc_info(btc_devices).or_else(|e| {
-            println!("Failed to get Bluetooth Classic Devices info: {e}");
+            app_notify(format!("Warning: Failed to get BTC info: {e}"));
             Ok(HashSet::new())
         })),
         (_, _) => {
-            let bt_info = dbg!(get_btc_info(btc_devices).unwrap_or_default());
-            let ble_info = dbg!(get_ble_info(ble_devices)?);
-            let combined_info = bt_info.into_iter().chain(ble_info).collect();
-            Ok(combined_info)
+            let btc_result = dbg!(get_btc_info(btc_devices));
+            let ble_result = dbg!(get_ble_info(ble_devices));
+
+            match (btc_result, ble_result) {
+                (Ok(btc_info), Ok(ble_info)) => {
+                    let combined_info = btc_info.into_iter().chain(ble_info).collect();
+                    Ok(combined_info)
+                }
+                (Ok(btc_info), Err(e)) => {
+                    println!("Warning: Failed to get BLE info: {e}");
+                    Ok(btc_info)
+                }
+                (Err(e), Ok(ble_info)) => {
+                    println!("Warning: Failed to get BTC info: {e}");
+                    Ok(ble_info)
+                }
+                (Err(btc_err), Err(ble_err)) => Err(anyhow!(
+                    "Failed to get both BTC and BLE info: {btc_err} | {ble_err}"
+                )),
+            }
         }
     }
 }
