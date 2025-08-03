@@ -118,7 +118,7 @@ impl PnpEnumerator {
                 flags |= DIGCF_DEVICEINTERFACE;
             },
             EnumerateSpecifier::DeviceSetupClassGuid(setup_class_guid) => {
-                std::hint::black_box(&setup_class_guid); // 请不要动这里，这个可以修复Release模式下的BUG
+                std::hint::black_box(&setup_class_guid); // Release 模式编译器优化 导致的 Bug
                 pnp_enumerator = None;
                 class_guid = Some(&setup_class_guid);
                 device_interface_class_guid = None;
