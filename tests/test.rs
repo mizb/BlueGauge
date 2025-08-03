@@ -52,14 +52,14 @@ fn btc() -> Result<()> {
         let socket = StreamSocket::new()?;
 
         for service in services {
-            if socket
+            if let Err(e) = socket
                 .ConnectAsync(
                     &service.ConnectionHostName()?,
                     &service.ConnectionServiceName()?,
                 )?
                 .get()
-                .is_err()
             {
+                println!("Err: {e:?}");
                 continue;
             };
             let reader = DataReader::CreateDataReader(&socket.InputStream()?)?;
@@ -75,7 +75,11 @@ fn btc() -> Result<()> {
     for btc_device_info in btc_devices_info {
         let id = btc_device_info.Id()?;
         let btc = BluetoothDevice::FromIdAsync(&id)?.get()?;
+        let status = btc.ConnectionStatus()?.0;
 
+        if status == 0 {
+            continue;
+        }
         if let Err(e) = rfcomm_test(btc.clone()) {
             println!("{e:?}")
         }
