@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
-use anyhow::{Result, anyhow};
+use crate::notify::app_notify;
 
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -115,7 +116,7 @@ pub struct TrayConfig {
 impl Default for TrayConfig {
     fn default() -> Self {
         TrayConfig {
-            update_interval: AtomicU64::new(30),
+            update_interval: AtomicU64::new(60),
             tray_icon_source: Mutex::new(TrayIconSource::App),
             tooltip_options: TooltipOptions::default(),
         }
@@ -159,7 +160,10 @@ impl Config {
             .ok_or(anyhow!("Failed to get config path"))?;
 
         if config_path.is_file() {
-            Config::read_toml(config_path)
+            Config::read_toml(config_path.clone()).or_else(|e| {
+                app_notify(format!("Failed to read config file: {e}"));
+                Config::create_toml(config_path)
+            })
         } else {
             Config::create_toml(config_path)
         }
@@ -209,7 +213,7 @@ impl Config {
     fn create_toml(config_path: PathBuf) -> Result<Self> {
         let default_config = TomlConfig {
             tray_config: TrayConfigToml {
-                update_interval: 30,
+                update_interval: 60,
                 show_disconnected: false,
                 truncate_name: false,
                 prefix_battery: false,
