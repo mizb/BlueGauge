@@ -100,9 +100,12 @@ pub fn get_bluetooth_info(
             "No Classic Bluetooth or Bluetooth LE devices found"
         )),
         (0, _) => dbg!(get_ble_info(ble_devices)),
-        (_, 0) => dbg!(get_btc_info(btc_devices)),
+        (_, 0) => dbg!(get_btc_info(btc_devices).or_else(|e| {
+            println!("Failed to get Bluetooth Classic Devices info: {e}");
+            Ok(HashSet::new())
+        })),
         (_, _) => {
-            let bt_info = dbg!(get_btc_info(btc_devices)?);
+            let bt_info = dbg!(get_btc_info(btc_devices).unwrap_or(HashSet::new()));
             let ble_info = dbg!(get_ble_info(ble_devices)?);
             let combined_info = bt_info.into_iter().chain(ble_info).collect();
             Ok(combined_info)
