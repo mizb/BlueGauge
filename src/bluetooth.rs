@@ -105,7 +105,7 @@ pub fn get_bluetooth_info(
             Ok(HashSet::new())
         })),
         (_, _) => {
-            let bt_info = dbg!(get_btc_info(btc_devices).unwrap_or(HashSet::new()));
+            let bt_info = dbg!(get_btc_info(btc_devices).unwrap_or_default());
             let ble_info = dbg!(get_ble_info(ble_devices)?);
             let combined_info = bt_info.into_iter().chain(ble_info).collect();
             Ok(combined_info)

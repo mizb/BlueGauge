@@ -160,9 +160,12 @@ impl ApplicationHandler<UserEvent> for App {
                             .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
                             .map(|parent_path| parent_path.join("BlueGauge.toml"))
                             .expect("Failed to get config path");
-                        let _ = std::process::Command::new("notepad.exe")
+                        if let Err(e) = std::process::Command::new("notepad.exe")
                             .arg(config_path)
-                            .spawn();
+                            .spawn()
+                        {
+                            app_notify(format!("Failed to open config file - {e}"));
+                        };
                     }
                     // 托盘设置：更新间隔
                     "15" | "30" | "60" | "300" | "600" | "1800" => {
