@@ -18,7 +18,7 @@ use crate::config::*;
 use crate::icon::load_battery_icon;
 use crate::notify::app_notify;
 use crate::startup::set_startup;
-use crate::tray::{create_menu, create_tray};
+use crate::tray::{create_menu, create_tray, convert_tray_info};
 
 use std::collections::HashSet;
 use std::ops::Deref;
@@ -73,11 +73,16 @@ impl Default for App {
     fn default() -> Self {
         let config = Config::open().expect("Failed to open config");
 
-        let (tray, tray_check_menus, bluetooth_info) =
-            create_tray(&config).expect("Failed to create tray");
+        let bluetooth_devices = find_bluetooth_devices()
+            .expect("Failed to find bluetooth devices");
+        let bluetooth_devices_info = get_bluetooth_info(bluetooth_devices)
+            .expect("Failed to get bluetooth devices info");
+
+        let (tray, tray_check_menus) =
+            create_tray(&config, &bluetooth_devices_info).expect("Failed to create tray");
 
         Self {
-            bluetooth_info: Arc::new(Mutex::new(bluetooth_info)),
+            bluetooth_info: Arc::new(Mutex::new(bluetooth_devices_info)),
             config: Arc::new(config),
             event_loop_proxy: None,
             notified_low_battery: Arc::new(Mutex::new(HashSet::new())),
@@ -413,7 +418,7 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 }
 
-                let (tray_menu, new_tray_check_menus, tooltip, _) = match create_menu(&config) {
+                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &new_bt_info) {
                     Ok(menu) => menu,
                     Err(e) => {
                         app_notify(format!("Failed to create tray  menu - {e}"));
@@ -424,8 +429,9 @@ impl ApplicationHandler<UserEvent> for App {
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
                     let icon = load_battery_icon(&config, &new_bt_info)
                         .expect("Failed to load battery icon");
+                    let bluetooth_tooltip_info = convert_tray_info(&new_bt_info, &config);
                     tray.set_menu(Some(Box::new(tray_menu)));
-                    tray.set_tooltip(Some(tooltip.join("\n")))
+                    tray.set_tooltip(Some(bluetooth_tooltip_info.join("\n")))
                         .expect("Failed to update tray tooltip");
                     tray.set_icon(Some(icon)).expect("Failed to set tray icon");
                 }
