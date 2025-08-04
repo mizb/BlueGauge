@@ -9,16 +9,16 @@ use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct TomlConfig {
-    #[serde(rename = "TrayConfig")]
-    tray_config: TrayConfigToml,
+struct ConfigToml {
+    #[serde(rename = "TrayOptions")]
+    tray_config: TrayOptionsToml,
 
     #[serde(rename = "NotifyOptions")]
     notify_options: NotifyOptionsToml,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct TrayConfigToml {
+struct TrayOptionsToml {
     update_interval: u64,
     show_disconnected: bool,
     truncate_name: bool,
@@ -48,6 +48,7 @@ pub enum TrayIconSource {
     BatteryFont {
         id: String,
         font_name: String,
+        /// "FollowSystemTheme"(Default), "FollowBluetoothStatu", font color in hex format, e.g., "#FFFFFF" 
         #[serde(skip_serializing_if = "Option::is_none")]
         font_color: Option<String>,
     },
@@ -107,15 +108,15 @@ pub struct TooltipOptions {
 }
 
 #[derive(Debug)]
-pub struct TrayConfig {
+pub struct TrayOptions {
     pub tooltip_options: TooltipOptions,
     pub tray_icon_source: Mutex<TrayIconSource>,
     pub update_interval: AtomicU64,
 }
 
-impl Default for TrayConfig {
+impl Default for TrayOptions {
     fn default() -> Self {
-        TrayConfig {
+        TrayOptions {
             update_interval: AtomicU64::new(60),
             tray_icon_source: Mutex::new(TrayIconSource::App),
             tooltip_options: TooltipOptions::default(),
@@ -123,7 +124,7 @@ impl Default for TrayConfig {
     }
 }
 
-impl TrayConfig {
+impl TrayOptions {
     pub fn update(&self, name: &str, check: bool) {
         match name {
             "show_disconnected" => self
@@ -147,7 +148,7 @@ impl TrayConfig {
 pub struct Config {
     pub config_path: PathBuf,
     pub notify_options: NotifyOptions,
-    pub tray_config: TrayConfig,
+    pub tray_config: TrayOptions,
     pub force_update: AtomicBool,
 }
 
@@ -174,8 +175,8 @@ impl Config {
             let lock = self.tray_config.tray_icon_source.lock().unwrap();
             lock.clone()
         };
-        let toml_config = TomlConfig {
-            tray_config: TrayConfigToml {
+        let toml_config = ConfigToml {
+            tray_config: TrayOptionsToml {
                 update_interval: self.tray_config.update_interval.load(Ordering::Relaxed),
                 show_disconnected: self
                     .tray_config
@@ -205,14 +206,14 @@ impl Config {
         };
 
         let toml_str = toml::to_string_pretty(&toml_config)
-            .expect("Failed to serialize TomlConfig structure as a String of TOML.");
+            .expect("Failed to serialize ConfigToml structure as a String of TOML.");
         std::fs::write(&self.config_path, toml_str)
             .expect("Failed to TOML String to BlueGauge.toml");
     }
 
     fn create_toml(config_path: PathBuf) -> Result<Self> {
-        let default_config = TomlConfig {
-            tray_config: TrayConfigToml {
+        let default_config = ConfigToml {
+            tray_config: TrayOptionsToml {
                 update_interval: 60,
                 show_disconnected: false,
                 truncate_name: false,
@@ -235,7 +236,7 @@ impl Config {
         Ok(Config {
             config_path,
             force_update: AtomicBool::new(false),
-            tray_config: TrayConfig {
+            tray_config: TrayOptions {
                 update_interval: AtomicU64::new(default_config.tray_config.update_interval),
                 tray_icon_source: Mutex::new(default_config.tray_config.tray_icon_source),
                 tooltip_options: TooltipOptions {
@@ -259,12 +260,12 @@ impl Config {
 
     fn read_toml(config_path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&config_path)?;
-        let toml_config: TomlConfig = toml::from_str(&content)?;
+        let toml_config: ConfigToml = toml::from_str(&content)?;
 
         Ok(Config {
             config_path,
             force_update: AtomicBool::new(false),
-            tray_config: TrayConfig {
+            tray_config: TrayOptions {
                 update_interval: AtomicU64::new(toml_config.tray_config.update_interval),
                 tray_icon_source: Mutex::new(toml_config.tray_config.tray_icon_source),
                 tooltip_options: TooltipOptions {
