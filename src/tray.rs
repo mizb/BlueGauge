@@ -29,7 +29,7 @@ impl CreateMenuItem {
             Some(text),
             Some(AboutMetadata {
                 name: Some("BlueGauge".to_owned()),
-                version: Some("0.2.5".to_owned()),
+                version: Some("0.2.6".to_owned()),
                 authors: Some(vec!["iKineticate".to_owned()]),
                 website: Some("https://github.com/iKineticate/BlueGauge".to_owned()),
                 ..Default::default()

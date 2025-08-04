@@ -1,6 +1,6 @@
 [package]
 name = "BlueGauge"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2024"
 authors = ["iKineticate <https://github.com/iKineticate>"]
 repository = "https://github.com/iKineticate/BlueGauge"
