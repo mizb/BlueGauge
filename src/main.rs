@@ -6,7 +6,7 @@ mod bluetooth;
 mod config;
 mod icon;
 mod language;
-mod menu_event;
+mod menu_handlers;
 mod notify;
 mod startup;
 mod tray;
@@ -17,7 +17,7 @@ use crate::bluetooth::{
 };
 use crate::config::*;
 use crate::icon::load_battery_icon;
-use crate::menu_event::MenuHandlers;
+use crate::menu_handlers::MenuHandlers;
 use crate::notify::app_notify;
 use crate::tray::{convert_tray_info, create_menu, create_tray};
 
