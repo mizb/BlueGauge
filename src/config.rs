@@ -48,7 +48,7 @@ pub enum TrayIconSource {
     BatteryFont {
         id: String,
         font_name: String,
-        /// "FollowSystemTheme"(Default), "FollowBluetoothStatu", font color in hex format, e.g., "#FFFFFF" 
+        /// "FollowSystemTheme"(Default), "FollowBluetoothStatu", font color in hex format, e.g., "#FFFFFF"
         #[serde(skip_serializing_if = "Option::is_none")]
         font_color: Option<String>,
     },

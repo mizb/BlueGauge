@@ -97,7 +97,7 @@ pub fn get_bluetooth_info(
     let ble_devices = bt_devices.1;
     match (btc_devices.len(), ble_devices.len()) {
         (0, 0) => Err(anyhow!(
-            "No Classic Bluetooth or Bluetooth LE devices found"
+            "No Classic Bluetooth and Bluetooth LE devices found"
         )),
         (0, _) => dbg!(get_ble_info(ble_devices).or_else(|e| {
             app_notify(format!("Warning: Failed to get BLE info: {e}"));
@@ -144,7 +144,9 @@ fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothIn
                 Err(e) => {
                     attempts += 1;
                     if attempts >= max_retries {
-                        return Err(e); // 达到最大重试次数，返回错误
+                        return Err(anyhow!(
+                            "Trying to enumerate the pnp device twice failed: {e}"
+                        )); // 达到最大重试次数，返回错误
                     }
                     println!(
                         "Failed to get Bluetooth device information: {e}, try again after 2 seconds... (try {attempts}/{max_retries})"
