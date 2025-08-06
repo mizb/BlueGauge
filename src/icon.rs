@@ -1,4 +1,9 @@
-use std::{collections::HashSet, path::Path};
+use crate::{
+    bluetooth::BluetoothInfo,
+    config::{Config, TrayIconSource},
+};
+
+use std::collections::HashSet;
 
 use anyhow::{Context, Result, anyhow};
 use piet_common::{
@@ -8,11 +13,6 @@ use tray_icon::Icon;
 use winreg::{
     RegKey,
     enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE},
-};
-
-use crate::{
-    bluetooth::BluetoothInfo,
-    config::{Config, TrayIconSource},
 };
 
 pub const LOGO_DATA: &[u8] = include_bytes!("../assets/logo.ico");
@@ -67,13 +67,24 @@ pub fn load_battery_icon(
 
 fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
     let custom_battery_icon_path = std::env::current_exe()
-        .ok()
-        .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
-        .map(|p| p.join(format!("assets\\{battery_level}.png")))
-        .and_then(|p| p.is_file().then_some(p))
-        .ok_or(anyhow!(
-            "Failed to find {battery_level}.png in Bluegauge directory"
-        ))?;
+        .map(|exe_path| exe_path.with_file_name("assets"))
+        .and_then(|icon_dir| {
+            let default_icon_path = icon_dir.join(format!("{battery_level}.png"));
+            if default_icon_path.is_file() {
+                return Ok(default_icon_path);
+            }
+            let theme_icon = match SystemTheme::get() {
+                SystemTheme::Light => icon_dir.join(format!("light\\{battery_level}.png")),
+                SystemTheme::Dark => icon_dir.join(format!("dark\\{battery_level}.png")),
+            };
+            if theme_icon.is_file() {
+                return Ok(theme_icon);
+            }
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Failed to find {battery_level} default/theme PNG in Bluegauge directory"),
+            ))
+        })?;
 
     let icon_data = std::fs::read(custom_battery_icon_path)?;
 
@@ -115,7 +126,6 @@ fn render_battery_font_icon(
     let mut piet = bitmap_target.render_context();
 
     // Dynamically calculated font size
-
     let mut layout;
     let text = piet.text();
     if let Some(size) = font_size {

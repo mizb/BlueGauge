@@ -263,13 +263,21 @@ impl Config {
     fn read_toml(config_path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&config_path)?;
         let toml_config: ConfigToml = toml::from_str(&content)?;
+        let tray_icon_source =
+            find_custom_icon().map_or(TrayIconSource::App, |_| {
+                match toml_config.tray_config.tray_icon_source {
+                    TrayIconSource::App => TrayIconSource::App,
+                    TrayIconSource::BatteryCustom { id } => TrayIconSource::BatteryCustom { id },
+                    TrayIconSource::BatteryFont { id, .. } => TrayIconSource::BatteryCustom { id },
+                }
+            });
 
         Ok(Config {
             config_path,
             force_update: AtomicBool::new(false),
             tray_config: TrayOptions {
                 update_interval: AtomicU64::new(toml_config.tray_config.update_interval),
-                tray_icon_source: Mutex::new(toml_config.tray_config.tray_icon_source),
+                tray_icon_source: Mutex::new(tray_icon_source),
                 tooltip_options: TooltipOptions {
                     show_disconnected: AtomicBool::new(toml_config.tray_config.show_disconnected),
                     truncate_name: AtomicBool::new(toml_config.tray_config.truncate_name),
@@ -350,4 +358,38 @@ impl Config {
             TrayIconSource::BatteryFont { id, .. } => Some(id),
         }
     }
+}
+
+fn find_custom_icon() -> Result<()> {
+    let assets_path = std::env::current_exe().map(|exe_path| exe_path.with_file_name("assets"))?;
+
+    if !assets_path.is_dir() {
+        return Err(anyhow!("Assets directory does not exist: {assets_path:?}"));
+    }
+
+    let have_custom_default_icons = (0..=100).all(|i| {
+        let file_name = format!("{i}.png");
+        let file_path = assets_path.join(file_name);
+        file_path.is_file()
+    });
+
+    if have_custom_default_icons {
+        return Ok(());
+    }
+
+    let have_custom_theme_icons = (0..=100).all(|i| {
+        let file_dark_name = format!("{i}_dark.png");
+        let file_light_name = format!("{i}_light.png");
+        let file_dark_path = assets_path.join(file_dark_name);
+        let file_light_path = assets_path.join(file_light_name);
+        file_dark_path.is_file() || file_light_path.is_file()
+    });
+
+    if have_custom_theme_icons {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "Assets directory does not contain custom battery icons."
+    ))
 }

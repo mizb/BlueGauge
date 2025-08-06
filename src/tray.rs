@@ -272,7 +272,7 @@ pub fn create_tray(
 
     let icon = load_battery_icon(config, bluetooth_devices_info)
         .inspect_err(|e| app_notify(format!("Failed to get battery icon: {e}")))
-        .unwrap_or(load_icon(LOGO_DATA)?);
+        .unwrap_or_else(|_| load_icon(LOGO_DATA).expect("Failed to load logo icon"));
 
     let bluetooth_tooltip_info = convert_tray_info(bluetooth_devices_info, config);
 

@@ -12,17 +12,19 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 - [x] 设置：蓝牙设备电量作为托盘图标    
 
     - 使用系统字体（默认）：  
-        1. 勾选需显示电量设备，打开托盘菜单-`设置`-`打开配置`  
+        1. 勾选需显示电量设备，打开托盘菜单-`设置`-`打开配置`
         2. 设置相关参数  
-        `font_name` = `"系统字体名称，如 Microsoft YaHei UI"`（默认Arial）  
-        `font_color` = `"十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认为`FollowSystemTheme`，字体颜色跟随系统主题）  
-        `font_size` = `0~64`  （默认`64`）   
-        3. 重新启动 BlueGauge   
+        `font_name` = `"系统字体名称，如 Microsoft YaHei UI"`（默认 `Arial`）  
+        `font_color` = `"十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认 `FollowSystemTheme`，字体颜色跟随系统主题）  
+        `font_size` = `0~64`  （默认 `64`）   
+        3. 重新启动 BlueGauge
 
     ![image](screenshots/battery.png)
 
     - 使用自定义图片  
-        在软件目录下创建一个`assets`文件夹，然后添加`0.png` 至 `100.png`照片即可 
+        在软件目录下创建一个`assets`文件夹，然后在其中添加以下PNG图片
+        - 跟随系统主题：添加 `0_dark.png` 至 `100_dark.png`，`0_light.png` 至 `100_light.png` 照片
+        - 不跟随系统主题：添加 `0.png` 至 `100.png` 照片
 
 - [x] 设置：开机自启动
 - [x] 设置：更新信息间隔时间
@@ -56,8 +58,8 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## 其他蓝牙电量软件
 
-1、苹果
+1. 苹果
 
-2、华为
+2. 华为
 
-3、三星
+3. 三星
