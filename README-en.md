@@ -7,11 +7,21 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## Function
 
-- [x] Setting：Bluetooth Device power as tray icon  
-    Support custom icons:   
-        (1) First check the device that needs to display the power, open tray menu -- `Settings` -- `Open Config` -- `font_name = "System Font Nmae, e.g. Microsoft YaHei UI"` + `font_color = "Hex color code，e.g. #FFFFFF、#00D26A"`,  restart BlueGauge after setting   
-        (2) create an assets folder in the software directory, and then add `0.png` to `100.png` pictures.  
+- [x] Setting：Bluetooth battery level as tray icon  
+
+    - Use system font (default):  
+        1. Check the device that needs to display the battery, open tray menu -- `Settings` -- `Open Config`
+        2. Set font  
+        `font_name` = `"System Font Nmae, e.g. Microsoft YaHei UI"`  
+        `font_color` = `"Hex color code，e.g. #FFFFFF、#00D26A"` (Default "FollowSystemTheme")  
+        `font_size` = `0~64` (Default `64`)  
+        3. restart BlueGauge   
+
     ![image](screenshots/battery.png)
+
+    - Use custom pictures  
+        create an assets folder in the BlueGauge directory, and then add `0.png` to `100.png` pictures.  
+
 - [x] Setting：Auto start
 - [x] Setting：Update interval
 - [x] Setting-tooltip：Shows unconnected devices
@@ -40,3 +50,11 @@ Welcome contributions from developers who can help us extend support for these d
 1. Limit Device Name Length: Implement a character limit for device names that ensures they fit within the available space of the tray notification. This may require shortening longer names to prevent truncation.
 
 2. Hide Disconnected Devices: Consider not displaying disconnected devices in the tray notifications. This approach would reduce clutter and ensure that only relevant information is shown, thereby preventing text overflow.
+
+## Other Bluetooth battery display software
+
+1. Apple
+
+2. Samsung
+
+3. Huawei

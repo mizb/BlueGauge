@@ -9,11 +9,21 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## 功能
 
-- [x] 设置：蓝牙设备电量作为托盘图标  
-    支持自定义图标：  
-        (1) 先勾选好需要显示电量的设备，然后打开托盘菜单--`设置`--`打开配置`--修改`font_name = "系统字体名称，如 Microsoft YaHei UI"` + 可选`font_color = "十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认为`FollowSystemTheme`，字体颜色跟随系统主题），设置好后重新启动 BlueGauge 即可   
-        (2) 在软件目录下创建一个`assets`文件夹，然后添加`0.png` 至 `100.png`照片即可。  
+- [x] 设置：蓝牙设备电量作为托盘图标    
+
+    - 使用系统字体（默认）：  
+        1. 勾选需显示电量设备，打开托盘菜单-`设置`-`打开配置`  
+        2. 设置相关参数  
+        `font_name` = `"系统字体名称，如 Microsoft YaHei UI"`（默认Arial）  
+        `font_color` = `"十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认为`FollowSystemTheme`，字体颜色跟随系统主题）  
+        `font_size` = `0~64`  （默认`64`）   
+        3. 重新启动 BlueGauge   
+
     ![image](screenshots/battery.png)
+
+    - 使用自定义图片  
+        在软件目录下创建一个`assets`文件夹，然后添加`0.png` 至 `100.png`照片即可 
+
 - [x] 设置：开机自启动
 - [x] 设置：更新信息间隔时间
 - [x] 设置-提示：显示未连接的设备
@@ -43,3 +53,11 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 1. **设置设备名称长度限制**：对设备名称的字符长度进行限制，确保其在托盘通知区域内完整显示。
 
 2. **隐藏未连接的设备**：对于未连接的设备，可以考虑不在托盘通知中显示，从而减少杂乱，避免文本溢出。
+
+## 其他蓝牙电量软件
+
+1、苹果
+
+2、华为
+
+3、三星

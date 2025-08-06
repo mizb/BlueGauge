@@ -210,16 +210,16 @@ impl MenuHandlers {
         let show_battery_icon_bt_id = menu_event_id;
 
         // 只处理显示蓝牙电量图标相关的菜单项
-        let show_battery_icon_items: Vec<_> = tray_check_menus
+        let bluetooth_menus: Vec<_> = tray_check_menus
             .iter()
             .filter(|item| !not_bluetooth_item_id.contains(&item.id().as_ref()))
             .collect();
 
-        let is_checked = show_battery_icon_items.iter().any(|item| {
+        let is_checked = bluetooth_menus.iter().any(|item| {
             item.id().as_ref() == show_battery_icon_bt_id && item.is_checked()
         });
 
-        show_battery_icon_items.iter().for_each(|item| {
+        bluetooth_menus.iter().for_each(|item| {
             let should_check =
                 item.id().as_ref() == show_battery_icon_bt_id && is_checked;
             item.set_checked(should_check);
@@ -248,6 +248,7 @@ impl MenuHandlers {
                         id: show_battery_icon_bt_id.to_owned(),
                         font_name: "Arial".to_owned(),
                         font_color: Some("FollowSystemTheme".to_owned()),
+                        font_size: Some(64)
                     };
                 };
             }

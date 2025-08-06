@@ -56,7 +56,8 @@ pub fn load_battery_icon(
                         id: _,
                         font_name,
                         font_color,
-                    } => get_icon_from_font(i.battery, &font_name, font_color),
+                        font_size,
+                    } => get_icon_from_font(i.battery, &font_name, font_color, font_size),
                     _ => load_icon(UNPAIRED_ICON_DATA),
                 },
             )
@@ -83,9 +84,10 @@ fn get_icon_from_font(
     battery_level: u8,
     font_name: &str,
     font_color: Option<String>,
+    font_size: Option<u8>,
 ) -> Result<Icon> {
     let (icon_rgba, icon_width, icon_height) =
-        render_battery_font_icon(battery_level, font_name, font_color)?;
+        render_battery_font_icon(battery_level, font_name, font_color, font_size)?;
     Icon::from_rgba(icon_rgba, icon_width, icon_height)
         .map_err(|e| anyhow!("Failed to get Icon - {e}"))
 }
@@ -94,11 +96,15 @@ fn render_battery_font_icon(
     battery_level: u8,
     font_name: &str,
     font_color: Option<String>, // 格式：#123456、#123456FF
+    font_size: Option<u8>,
 ) -> Result<(Vec<u8>, u32, u32)> {
     let indicator = battery_level.to_string();
 
     let width = 64;
     let height = 64;
+    let font_color = font_color
+        .and_then(|c| c.ne("FollowSystemTheme").then_some(c))
+        .unwrap_or_else(|| SystemTheme::get().get_font_color());
 
     let mut device = Device::new().map_err(|e| anyhow!("Failed to get Device - {e}"))?;
 
@@ -109,28 +115,35 @@ fn render_battery_font_icon(
     let mut piet = bitmap_target.render_context();
 
     // Dynamically calculated font size
-    let font_color = font_color
-        .and_then(|c| c.ne("FollowSystemTheme").then_some(c))
-        .unwrap_or(SystemTheme::get().get_font_color());
+
     let mut layout;
-    let mut font_size = match battery_level {
-        100 => 42.0,
-        b if b < 10 => 70.0,
-        _ => 64.0,
-    };
     let text = piet.text();
-    loop {
+    if let Some(size) = font_size {
         layout = text
             .new_text_layout(indicator.clone())
-            .font(FontFamily::new_unchecked(font_name), font_size)
+            .font(FontFamily::new_unchecked(font_name), size as f64)
             .text_color(Color::from_hex_str(&font_color)?)
             .build()
             .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
+    } else {
+        let mut font_size = match battery_level {
+            100 => 42.0,
+            b if b < 10 => 70.0,
+            _ => 64.0,
+        };
+        loop {
+            layout = text
+                .new_text_layout(indicator.clone())
+                .font(FontFamily::new_unchecked(font_name), font_size)
+                .text_color(Color::from_hex_str(&font_color)?)
+                .build()
+                .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
 
-        if layout.size().width > width as f64 || layout.size().height > height as f64 {
-            break;
+            if layout.size().width > width as f64 || layout.size().height > height as f64 {
+                break;
+            }
+            font_size += 2.0;
         }
-        font_size += 2.0;
     }
 
     let (x, y) = (
