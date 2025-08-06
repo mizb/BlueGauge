@@ -226,6 +226,10 @@ impl PnpEnumerator {
                     Err(GetDeviceInstanceIdFromDevinfoDataError::Win32Error(win32_error)) => {
                         return Err(EnumerateError::Win32Error(win32_error));
                     },
+                    Err(GetDeviceInstanceIdFromDevinfoDataError::Win32ErrorInvalidData(invalid_data_error)) => {
+                        debug_assert!(false, "Invalid data when attempting to get the device instance id: {}", invalid_data_error);
+                        return Err(EnumerateError::Win32ErrorInvalidData(invalid_data_error));
+                    },
                 };
 
                 // for all devices: capture the base container id of the device
@@ -238,7 +242,10 @@ impl PnpEnumerator {
                             PnpDevicePropertyValue::String(value_as_string) => value_as_string,
                             _ => {
                                 debug_assert!(false, "get_device_registry_property_value returned a non-string value for SPDRP_BASE_CONTAINERID");
-                                return Err(EnumerateError::Win32Error(ERROR_INVALID_DATA.0));
+                                return Err(EnumerateError::Win32ErrorInvalidData(format!(
+                                    "get_device_registry_property_value returned a non-string value for SPDRP_BASE_CONTAINERID: {}",
+                                    ERROR_INVALID_DATA.0
+                                )));
                             },
                         }
                     },
@@ -269,7 +276,10 @@ impl PnpEnumerator {
                     },
                     Err(_) => {
                         debug_assert!(false, "get_device_registry_property_value returned an invalid (non-Guid) string value for SPDRP_BASE_CONTAINERID");
-                        return Err(EnumerateError::Win32Error(ERROR_INVALID_DATA.0));
+                        return Err(EnumerateError::Win32ErrorInvalidData(format!(
+                            "get_device_registry_property_value returned an invalid (non-Guid) string value for SPDRP_BASE_CONTAINERID: {}",
+                            ERROR_INVALID_DATA.0
+                        )));
                     },
                 };
 
@@ -598,6 +608,7 @@ impl PnpEnumerator {
 enum GetDeviceInstanceIdFromDevinfoDataError {
     StringDecodingError(/*error: */std::string::FromUtf16Error),
     Win32Error(/*win32_error: */u32),
+    Win32ErrorInvalidData(/*win32_error_invalid_data */String)
 }
 
 fn get_device_instance_id_from_devinfo_data(handle_to_device_info_set: HDEVINFO, devinfo_data: &SP_DEVINFO_DATA) -> Result<String, GetDeviceInstanceIdFromDevinfoDataError> {
@@ -615,12 +626,18 @@ fn get_device_instance_id_from_devinfo_data(handle_to_device_info_set: HDEVINFO,
         }
     } else {
         debug_assert!(false, "SetupDiGetDeviceInstanceIdW returned success when we asked it for the required buffer size; it should always return false in this circumstance (since device ids are null terminated and can therefore never be zero bytes in length)");
-        return Err(GetDeviceInstanceIdFromDevinfoDataError::Win32Error(ERROR_INVALID_DATA.0));
+        return Err(GetDeviceInstanceIdFromDevinfoDataError::Win32ErrorInvalidData(format!(
+            "SetupDiGetDeviceInstanceIdW returned success when we asked it for the required buffer size; it should always return false in this circumstance (since device ids are null terminated and can therefore never be zero bytes in length): {}",
+            ERROR_INVALID_DATA.0
+        )));
     }
     //
     if required_size == 0 {
         debug_assert!(false, "Device instance ID has zero bytes (and is required to have at least one byte...the null terminator); aborting.");
-        return Err(GetDeviceInstanceIdFromDevinfoDataError::Win32Error(ERROR_INVALID_DATA.0));
+        return Err(GetDeviceInstanceIdFromDevinfoDataError::Win32ErrorInvalidData(format!(
+            "Device instance ID has zero bytes (and is required to have at least one byte...the null terminator); aborting.: {}",
+            ERROR_INVALID_DATA.0
+        )));
     }
     //
     // allocate memory for the device instance id via a zeroed utf16 vector; then create a PWSTR instance which uses that vector as its mutable data region
@@ -1211,7 +1228,14 @@ fn get_device_path_from_device_interface_detail_data(handle_to_device_info_set: 
     // get the size of the SP_DEVICE_INTERFACE_DETAIL_DATA_W structure required to contain the device path; we'll get an error code of ERROR_INSUFFICIENT_BUFFER and the required_size parameter will contain the required size
     // see: https://learn.microsoft.com/en-us/windows/win32/api/setupapi/nf-setupapi-setupdigetdeviceinterfacedetailw
     let mut required_size: u32 = 0;
-    let get_device_interface_detail_result = unsafe { SetupDiGetDeviceInterfaceDetailW(handle_to_device_info_set, device_interface_data, std::ptr::null_mut(), 0, &mut required_size, std::ptr::null_mut()) };
+    let get_device_interface_detail_result = unsafe { SetupDiGetDeviceInterfaceDetailW(
+        handle_to_device_info_set,
+        device_interface_data,
+        std::ptr::null_mut(),
+        0,
+        &mut required_size,
+        std::ptr::null_mut()
+    ) };
     if get_device_interface_detail_result == 0 {
         let win32_error = win32_utils::get_last_error_as_win32_error();
         if win32_error == ERROR_INSUFFICIENT_BUFFER {
