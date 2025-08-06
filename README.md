@@ -16,15 +16,17 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         2. 设置相关参数  
         `font_name` = `"系统字体名称，如 Microsoft YaHei UI"`（默认 `Arial`）  
         `font_color` = `"十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认 `FollowSystemTheme`，字体颜色跟随系统主题）  
-        `font_size` = `0~64`  （默认 `64`）   
+        `font_size` = `0~255`  （默认 `64`）   
         3. 重新启动 BlueGauge
 
     ![image](screenshots/battery.png)
 
     - 使用自定义图片  
-        在软件目录下创建一个`assets`文件夹，然后在其中添加以下PNG图片
-        - 跟随系统主题：添加 `0_dark.png` 至 `100_dark.png`，`0_light.png` 至 `100_light.png` 照片
-        - 不跟随系统主题：添加 `0.png` 至 `100.png` 照片
+        1. 在软件目录下创建一个 `assets` 文件夹，
+        2. 在 `assets`文件夹 中添加以下PNG图片
+            - 跟随系统主题：添加 `0_dark.png` 至 `100_dark.png`，添加 `0_light.png` 至 `100_light.png` 照片
+            - 不跟随系统主题：添加 `0.png` 至 `100.png` 照片  
+        3. 重新启动 BlueGauge
 
 - [x] 设置：开机自启动
 - [x] 设置：更新信息间隔时间
