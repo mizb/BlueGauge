@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
-use crate::notify::app_notify;
-
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 
@@ -164,7 +162,7 @@ impl Config {
 
         if config_path.is_file() {
             Config::read_toml(config_path.clone()).or_else(|e| {
-                app_notify(format!("Failed to read config file: {e}"));
+                println!("Failed to read config file: {e}");
                 Config::create_toml(config_path)
             })
         } else {
