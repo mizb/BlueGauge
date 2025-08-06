@@ -26,6 +26,36 @@ impl MenuHandlers {
         }
     }
 
+    pub fn set_icon_connect_color(
+        config: &Config,
+        menu_event_id: &str,
+        tray_check_menus: Vec<CheckMenuItem>,
+    ) {
+        if let Some(item) = tray_check_menus
+            .iter()
+            .find(|item| item.id().as_ref() == menu_event_id)
+        {
+            if item.is_checked() {
+                config
+                    .tray_options
+                    .tray_icon_source
+                    .lock()
+                    .unwrap()
+                    .update_connect_color(true);
+            } else {
+                config
+                    .tray_options
+                    .tray_icon_source
+                    .lock()
+                    .unwrap()
+                    .update_connect_color(false);
+            }
+
+            config.save();
+            config.force_update.store(true, Ordering::SeqCst);
+        }
+    }
+
     pub fn open_config() {
         let config_path = std::env::current_exe()
             .ok()
@@ -71,17 +101,15 @@ impl MenuHandlers {
         // 更新配置
         if let Some(update_interval) = selected_update_interval {
             config
-                .tray_config
+                .tray_options
                 .update_interval
                 .store(update_interval, Ordering::Relaxed);
-            config.save();
         } else {
             let default_update_interval = 60;
             config
-                .tray_config
+                .tray_options
                 .update_interval
                 .store(default_update_interval, Ordering::Relaxed);
-            config.save();
 
             // 找到并选中默认项
             if let Some(default_item) = update_interval_items
@@ -92,6 +120,7 @@ impl MenuHandlers {
             }
         }
 
+        config.save();
         config.force_update.store(true, Ordering::SeqCst);
     }
 
@@ -132,14 +161,12 @@ impl MenuHandlers {
                 .notify_options
                 .low_battery
                 .store(low_battery, Ordering::Relaxed);
-            config.save();
         } else {
             let default_low_battery = 15;
             config
                 .notify_options
                 .low_battery
                 .store(default_low_battery, Ordering::Relaxed);
-            config.save();
 
             // 找到并选中默认项
             if let Some(default_item) = low_battery_items.iter().find(|i| i.id().as_ref() == "0.15")
@@ -147,6 +174,8 @@ impl MenuHandlers {
                 default_item.set_checked(true);
             }
         }
+
+        config.save();
     }
 
     pub fn set_notify_device_change(
@@ -161,11 +190,11 @@ impl MenuHandlers {
         {
             if item.is_checked() {
                 config.notify_options.update(menu_event_id, true);
-                config.save();
             } else {
                 config.notify_options.update(menu_event_id, false);
-                config.save();
             }
+
+            config.save();
         }
     }
 
@@ -179,10 +208,10 @@ impl MenuHandlers {
             .find(|item| item.id().as_ref() == menu_event_id)
         {
             if item.is_checked() {
-                config.tray_config.update(menu_event_id, true);
+                config.tray_options.update(menu_event_id, true);
                 config.save();
             } else {
-                config.tray_config.update(menu_event_id, false);
+                config.tray_options.update(menu_event_id, false);
                 config.save();
             }
         }
@@ -226,7 +255,7 @@ impl MenuHandlers {
         });
 
         let mut original_tray_icon_source =
-            config.tray_config.tray_icon_source.lock().unwrap();
+            config.tray_options.tray_icon_source.lock().unwrap();
 
         match original_tray_icon_source.deref() {
             TrayIconSource::App if is_checked => {

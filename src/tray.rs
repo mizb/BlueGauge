@@ -1,7 +1,8 @@
 use std::collections::HashSet;
+use std::ops::Deref;
 
 use crate::bluetooth::BluetoothInfo;
-use crate::config::Config;
+use crate::config::{Config, TrayIconSource};
 use crate::icon::{LOGO_DATA, load_battery_icon, load_icon};
 use crate::language::{Language, Localization};
 use crate::notify::app_notify;
@@ -141,6 +142,36 @@ impl CreateMenuItem {
         tray_check_menus.extend(menu_device_change.iter().cloned());
         menu_device_change
     }
+
+    fn set_icon_connect_color(
+        config: &Config,
+        loc: &Localization,
+        tray_check_menus: &mut Vec<CheckMenuItem>,
+    ) -> CheckMenuItem {
+        let connection_toggle_menu = if let TrayIconSource::BatteryFont { font_color, .. } =
+            config.tray_options.tray_icon_source.lock().unwrap().deref()
+        {
+            CheckMenuItem::with_id(
+                "set_icon_connect_color",
+                loc.set_icon_connect_color,
+                true,
+                font_color.as_ref().is_some_and(|c| c == "ConnectColor"),
+                None,
+            )
+        } else {
+            CheckMenuItem::with_id(
+                "set_icon_connect_color",
+                loc.set_icon_connect_color,
+                false,
+                false,
+                None,
+            )
+        };
+
+        tray_check_menus.push(connection_toggle_menu.clone());
+
+        connection_toggle_menu
+    }
 }
 
 pub fn create_menu(
@@ -186,12 +217,14 @@ pub fn create_menu(
             true,
             &menu_update_interval,
         )? as &dyn IsMenuItem;
-
+        let menu_set_icon_connect_color =
+            CreateMenuItem::set_icon_connect_color(config, loc, &mut tray_check_menus);
         let menu_set_tray_tooltip =
             CreateMenuItem::set_tray_tooltip(config, loc, &mut tray_check_menus);
 
         let mut menu_tray_options: Vec<&dyn IsMenuItem> = Vec::new();
         menu_tray_options.push(menu_update_interval as &dyn IsMenuItem);
+        menu_tray_options.push(&menu_set_icon_connect_color as &dyn IsMenuItem);
         menu_tray_options.extend(
             menu_set_tray_tooltip
                 .iter()

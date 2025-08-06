@@ -41,7 +41,7 @@ pub fn load_battery_icon(
         || load_icon(LOGO_DATA).map_err(|e| anyhow!("Failed to load app icon - {e}"));
 
     let tray_icon_source = {
-        let lock = config.tray_config.tray_icon_source.lock().unwrap();
+        let lock = config.tray_options.tray_icon_source.lock().unwrap();
         lock.clone()
     };
 
@@ -57,7 +57,20 @@ pub fn load_battery_icon(
                         font_name,
                         font_color,
                         font_size,
-                    } => get_icon_from_font(i.battery, &font_name, font_color, font_size),
+                    } => {
+                        let should_icon_connect_color = font_color
+                            .as_ref()
+                            .is_some_and(|c| c.eq("ConnectColor"))
+                            .then_some(i.status);
+
+                        get_icon_from_font(
+                            i.battery,
+                            &font_name,
+                            font_color,
+                            font_size,
+                            should_icon_connect_color,
+                        )
+                    }
                     _ => load_icon(UNPAIRED_ICON_DATA),
                 },
             )
@@ -73,12 +86,12 @@ fn get_icon_from_custom(battery_level: u8) -> Result<Icon> {
             if default_icon_path.is_file() {
                 return Ok(default_icon_path);
             }
-            let theme_icon = match SystemTheme::get() {
+            let theme_icon_path = match SystemTheme::get() {
                 SystemTheme::Light => icon_dir.join(format!("light\\{battery_level}.png")),
                 SystemTheme::Dark => icon_dir.join(format!("dark\\{battery_level}.png")),
             };
-            if theme_icon.is_file() {
-                return Ok(theme_icon);
+            if theme_icon_path.is_file() {
+                return Ok(theme_icon_path);
             }
             Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -96,9 +109,15 @@ fn get_icon_from_font(
     font_name: &str,
     font_color: Option<String>,
     font_size: Option<u8>,
+    should_icon_connect_color: Option<bool>,
 ) -> Result<Icon> {
-    let (icon_rgba, icon_width, icon_height) =
-        render_battery_font_icon(battery_level, font_name, font_color, font_size)?;
+    let (icon_rgba, icon_width, icon_height) = render_battery_font_icon(
+        battery_level,
+        font_name,
+        font_color,
+        font_size,
+        should_icon_connect_color,
+    )?;
     Icon::from_rgba(icon_rgba, icon_width, icon_height)
         .map_err(|e| anyhow!("Failed to get Icon - {e}"))
 }
@@ -108,14 +127,23 @@ fn render_battery_font_icon(
     font_name: &str,
     font_color: Option<String>, // 格式：#123456、#123456FF
     font_size: Option<u8>,
+    should_icon_connect_color: Option<bool>,
 ) -> Result<(Vec<u8>, u32, u32)> {
     let indicator = battery_level.to_string();
 
     let width = 64;
     let height = 64;
-    let font_color = font_color
-        .and_then(|c| c.ne("FollowSystemTheme").then_some(c))
-        .unwrap_or_else(|| SystemTheme::get().get_font_color());
+    let font_color = if let Some(should) = should_icon_connect_color {
+        if should {
+            "#55B978".to_owned()
+        } else {
+            "#FF7272".to_owned()
+        }
+    } else {
+        font_color
+            .and_then(|c| c.ne("FollowSystemTheme").then_some(c))
+            .unwrap_or_else(|| SystemTheme::get().get_font_color())
+    };
 
     let mut device = Device::new().map_err(|e| anyhow!("Failed to get Device - {e}"))?;
 

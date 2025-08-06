@@ -152,6 +152,11 @@ impl ApplicationHandler<UserEvent> for App {
                     "force_update" => MenuHandlers::force_update(&config),
                     "startup" => MenuHandlers::startup(tray_check_menus),
                     "open_config" => MenuHandlers::open_config(),
+                    "set_icon_connect_color" => MenuHandlers::set_icon_connect_color(
+                        &config,
+                        menu_event_id,
+                        tray_check_menus,
+                    ),
                     // 托盘设置：更新间隔
                     "15" | "30" | "60" | "300" | "600" | "1800" => {
                         MenuHandlers::set_update_interval(&config, menu_event_id, tray_check_menus);

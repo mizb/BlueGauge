@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigToml {
     #[serde(rename = "TrayOptions")]
-    tray_config: TrayOptionsToml,
+    tray_options: TrayOptionsToml,
 
     #[serde(rename = "NotifyOptions")]
     notify_options: NotifyOptionsToml,
@@ -46,7 +46,9 @@ pub enum TrayIconSource {
     BatteryFont {
         id: String,
         font_name: String,
-        /// "FollowSystemTheme"(Default), "FollowBluetoothStatu", font color in hex format, e.g., "#FFFFFF"
+        /// "FollowSystemTheme"(Default),
+        /// "ConnectColor"(连接状态颜色)
+        /// Font Color in hex format (e.g. "#FFFFFF")
         #[serde(skip_serializing_if = "Option::is_none")]
         font_color: Option</* Hex color */ String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,6 +62,29 @@ impl TrayIconSource {
             Self::App => (),
             Self::BatteryCustom { id } => *id = new_id.to_string(),
             Self::BatteryFont { id, .. } => *id = new_id.to_string(),
+        }
+    }
+
+    pub fn update_connect_color(&mut self, should_update: bool) {
+        match self {
+            Self::App => (),
+            Self::BatteryCustom { id } => {
+                if should_update {
+                    *self = TrayIconSource::BatteryFont {
+                        id: id.to_owned(),
+                        font_name: "Arial".to_owned(),
+                        font_color: Some("FollowSystemTheme".to_owned()),
+                        font_size: Some(64),
+                    }
+                }
+            }
+            Self::BatteryFont { font_color, .. } => {
+                if should_update {
+                    *font_color = Some("ConnectColor".to_owned());
+                } else if *font_color == Some("ConnectColor".to_owned()) {
+                    *font_color = None;
+                }
+            }
         }
     }
 }
@@ -148,7 +173,7 @@ impl TrayOptions {
 pub struct Config {
     pub config_path: PathBuf,
     pub notify_options: NotifyOptions,
-    pub tray_config: TrayOptions,
+    pub tray_options: TrayOptions,
     pub force_update: AtomicBool,
 }
 
@@ -172,24 +197,24 @@ impl Config {
 
     pub fn save(&self) {
         let tray_icon_source = {
-            let lock = self.tray_config.tray_icon_source.lock().unwrap();
+            let lock = self.tray_options.tray_icon_source.lock().unwrap();
             lock.clone()
         };
         let toml_config = ConfigToml {
-            tray_config: TrayOptionsToml {
-                update_interval: self.tray_config.update_interval.load(Ordering::Relaxed),
+            tray_options: TrayOptionsToml {
+                update_interval: self.tray_options.update_interval.load(Ordering::Relaxed),
                 show_disconnected: self
-                    .tray_config
+                    .tray_options
                     .tooltip_options
                     .show_disconnected
                     .load(Ordering::Relaxed),
                 truncate_name: self
-                    .tray_config
+                    .tray_options
                     .tooltip_options
                     .truncate_name
                     .load(Ordering::Relaxed),
                 prefix_battery: self
-                    .tray_config
+                    .tray_options
                     .tooltip_options
                     .prefix_battery
                     .load(Ordering::Relaxed),
@@ -213,7 +238,7 @@ impl Config {
 
     fn create_toml(config_path: PathBuf) -> Result<Self> {
         let default_config = ConfigToml {
-            tray_config: TrayOptionsToml {
+            tray_options: TrayOptionsToml {
                 update_interval: 60,
                 show_disconnected: false,
                 truncate_name: false,
@@ -236,15 +261,15 @@ impl Config {
         Ok(Config {
             config_path,
             force_update: AtomicBool::new(false),
-            tray_config: TrayOptions {
-                update_interval: AtomicU64::new(default_config.tray_config.update_interval),
-                tray_icon_source: Mutex::new(default_config.tray_config.tray_icon_source),
+            tray_options: TrayOptions {
+                update_interval: AtomicU64::new(default_config.tray_options.update_interval),
+                tray_icon_source: Mutex::new(default_config.tray_options.tray_icon_source),
                 tooltip_options: TooltipOptions {
                     show_disconnected: AtomicBool::new(
-                        default_config.tray_config.show_disconnected,
+                        default_config.tray_options.show_disconnected,
                     ),
-                    truncate_name: AtomicBool::new(default_config.tray_config.truncate_name),
-                    prefix_battery: AtomicBool::new(default_config.tray_config.prefix_battery),
+                    truncate_name: AtomicBool::new(default_config.tray_options.truncate_name),
+                    prefix_battery: AtomicBool::new(default_config.tray_options.prefix_battery),
                 },
             },
             notify_options: NotifyOptions {
@@ -261,25 +286,26 @@ impl Config {
     fn read_toml(config_path: PathBuf) -> Result<Self> {
         let content = std::fs::read_to_string(&config_path)?;
         let toml_config: ConfigToml = toml::from_str(&content)?;
-        let tray_icon_source =
-            find_custom_icon().map_or(TrayIconSource::App, |_| {
-                match toml_config.tray_config.tray_icon_source {
-                    TrayIconSource::App => TrayIconSource::App,
-                    TrayIconSource::BatteryCustom { id } => TrayIconSource::BatteryCustom { id },
-                    TrayIconSource::BatteryFont { id, .. } => TrayIconSource::BatteryCustom { id },
-                }
-            });
+        let tray_icon_source = if find_custom_icon().is_err() {
+            toml_config.tray_options.tray_icon_source
+        } else {
+            match toml_config.tray_options.tray_icon_source {
+                TrayIconSource::App => TrayIconSource::App,
+                TrayIconSource::BatteryCustom { id } => TrayIconSource::BatteryCustom { id },
+                TrayIconSource::BatteryFont { id, .. } => TrayIconSource::BatteryCustom { id },
+            }
+        };
 
         Ok(Config {
             config_path,
             force_update: AtomicBool::new(false),
-            tray_config: TrayOptions {
-                update_interval: AtomicU64::new(toml_config.tray_config.update_interval),
+            tray_options: TrayOptions {
+                update_interval: AtomicU64::new(toml_config.tray_options.update_interval),
                 tray_icon_source: Mutex::new(tray_icon_source),
                 tooltip_options: TooltipOptions {
-                    show_disconnected: AtomicBool::new(toml_config.tray_config.show_disconnected),
-                    truncate_name: AtomicBool::new(toml_config.tray_config.truncate_name),
-                    prefix_battery: AtomicBool::new(toml_config.tray_config.prefix_battery),
+                    show_disconnected: AtomicBool::new(toml_config.tray_options.show_disconnected),
+                    truncate_name: AtomicBool::new(toml_config.tray_options.truncate_name),
+                    prefix_battery: AtomicBool::new(toml_config.tray_options.prefix_battery),
                 },
             },
             notify_options: NotifyOptions {
@@ -296,25 +322,25 @@ impl Config {
 
 impl Config {
     pub fn get_update_interval(&self) -> u64 {
-        self.tray_config.update_interval.load(Ordering::Acquire)
+        self.tray_options.update_interval.load(Ordering::Acquire)
     }
 
     pub fn get_prefix_battery(&self) -> bool {
-        self.tray_config
+        self.tray_options
             .tooltip_options
             .prefix_battery
             .load(Ordering::Acquire)
     }
 
     pub fn get_show_disconnected(&self) -> bool {
-        self.tray_config
+        self.tray_options
             .tooltip_options
             .show_disconnected
             .load(Ordering::Acquire)
     }
 
     pub fn get_truncate_name(&self) -> bool {
-        self.tray_config
+        self.tray_options
             .tooltip_options
             .truncate_name
             .load(Ordering::Acquire)
@@ -346,7 +372,7 @@ impl Config {
 
     pub fn get_tray_battery_icon_bt_id(&self) -> Option<String> {
         let tray_icon_source = {
-            let lock = self.tray_config.tray_icon_source.lock().unwrap();
+            let lock = self.tray_options.tray_icon_source.lock().unwrap();
             lock.clone()
         };
 
