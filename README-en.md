@@ -14,15 +14,18 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         2. Set font  
         `font_name` = `"System Font Nmae, e.g. Microsoft YaHei UI"`  
         `font_color` = `"Hex color code，e.g. #FFFFFF、#00D26A"` (Default `"FollowSystemTheme"`)  
-        `font_size` = `0~64` (Default `64`)  
-        3. restart BlueGauge   
+        `font_size` = `0~255` (Default `64`)   
+        3. restart BlueGauge
 
     ![image](screenshots/battery.png)
 
     - Use custom pictures  
-        create an assets folder in the BlueGauge directory, and then add pictures.  
-        - Default：add `0.png` to `100.png`
-        - Follow system theme：add `0_dark.png` to `100_dark.png`，`0_light.png` to `100_light.png`
+        1. create an `assets` folder in the BlueGauge directory
+        2. then add pictures  
+            - Default：add `0.png` to `100.png`   
+            - Follow system theme：add `0_dark.png` to `100_dark.png`，`0_light.png` to `100_light.png`
+        3. restart BlueGauge  
+
 
 - [x] Setting：Auto start
 - [x] Setting：Update interval
