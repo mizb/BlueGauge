@@ -227,9 +227,9 @@ fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
 }
 
 fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
-    // 0000180A-0000-1000-8000-00805F9B34FB
+    // 0000180F-0000-1000-8000-00805F9B34FB
     let battery_services_uuid: GUID = GattServiceUuids::Battery()?;
-    // 00002A29-0000-1000-8000-00805F9B34FB
+    // 00002A19-0000-1000-8000-00805F9B34FB
     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
 
     // windows-rs库的GetGattServicesForUuidAsync异步与tray-icon的异步（托盘点击事件？）可能存在冲突进而导致阻塞
