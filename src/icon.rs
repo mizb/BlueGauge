@@ -133,6 +133,7 @@ fn render_battery_font_icon(
 
     let width = 64;
     let height = 64;
+    let font_size = font_size.and_then(|s| s.ne(&64).then_some(s as f64));
     let font_color = if let Some(should) = should_icon_connect_color {
         if should {
             "#55B978".to_owned()
@@ -159,7 +160,7 @@ fn render_battery_font_icon(
     if let Some(size) = font_size {
         layout = text
             .new_text_layout(indicator.clone())
-            .font(FontFamily::new_unchecked(font_name), size as f64)
+            .font(FontFamily::new_unchecked(font_name), size)
             .text_color(Color::from_hex_str(&font_color)?)
             .build()
             .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
