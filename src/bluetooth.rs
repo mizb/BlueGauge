@@ -1,3 +1,9 @@
+use crate::{
+    config::Config,
+    language::{Language, Localization},
+    notify::{app_notify, notify},
+};
+
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
@@ -14,17 +20,9 @@ use windows::{
     core::GUID,
 };
 use windows_pnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator};
-use windows_sys::Win32::{
-    Devices::{
-        DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM, Properties::DEVPKEY_Device_FriendlyName,
-    },
-    Foundation::DEVPROPKEY,
-};
-
-use crate::{
-    config::Config,
-    language::{Language, Localization},
-    notify::{app_notify, notify},
+use windows_sys::{
+    Wdk::Devices::Bluetooth::DEVPKEY_Bluetooth_DeviceAddress,
+    Win32::{Devices::DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM, Foundation::DEVPROPKEY},
 };
 
 #[allow(non_upper_case_globals)]
@@ -187,37 +185,38 @@ fn process_btc_device(
     pnp_btc_devices_info: &[(String, u8)],
 ) -> Result<BluetoothInfo> {
     let btc_name: String = btc_device.Name()?.to_string().trim().into();
-    let battery = pnp_btc_devices_info
+
+    let btc_address = format!("{:012X}", btc_device.BluetoothAddress()?);
+
+    let btc_battery = pnp_btc_devices_info
         .iter()
-        .filter_map(|(pnp_name, battery)| {
-            pnp_name
-                .starts_with(&btc_name)
-                .then_some((btc_name.chars().count(), battery))
-        })
-        .max_by_key(|(btc_name_len, _)| *btc_name_len)
-        .map(|(_, battery)| *battery)
+        .find_map(|(pnp_address, pnp_battery)| btc_address.eq(pnp_address).then_some(*pnp_battery))
         .ok_or(anyhow!(
             "No matching Bluetooth Classic Device in Pnp device: {btc_name}"
         ))?;
-    let status = btc_device.ConnectionStatus()? == BCS::Connected;
-    let id = btc_device.DeviceId()?.to_string();
+
+    let btc_status = btc_device.ConnectionStatus()? == BCS::Connected;
     Ok(BluetoothInfo {
         name: btc_name,
-        battery,
-        status,
-        id,
+        battery: btc_battery,
+        status: btc_status,
+        id: btc_address,
     })
 }
 
 fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
     let name = ble_device.Name()?.to_string();
+
     let battery = get_ble_battery_level(ble_device)
         .map_err(|e| anyhow!("Failed to get '{name}'BLE Battery Level: {e}"))?;
+
     let status = ble_device
         .ConnectionStatus()
         .map(|status| matches!(status, BCS::Connected))
         .with_context(|| format!("Failed to get BLE connected status: {name}"))?;
-    let id = ble_device.DeviceId()?.to_string();
+
+    let id = format!("{:012X}", ble_device.BluetoothAddress()?);
+
     Ok(BluetoothInfo {
         name,
         battery,
@@ -274,22 +273,22 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
         }
 
         if let Some(mut props) = bt_device_info.device_instance_properties {
-            let name = props
-                .remove(&DEVPKEY_Device_FriendlyName.into())
-                .and_then(|value| match value {
-                    PnpDevicePropertyValue::String(v) => Some(v.trim().into()),
-                    _ => None,
-                });
-
-            let battery_level = props
+            let battery = props
                 .remove(&DEVPKEY_Bluetooth_Battery.into())
                 .and_then(|value| match value {
                     PnpDevicePropertyValue::Byte(v) => Some(v),
                     _ => None,
                 });
 
-            if let (Some(n), Some(b)) = (name, battery_level) {
-                pnp_btc_devices_info.push((n, b));
+            let address = props
+                .remove(&DEVPKEY_Bluetooth_DeviceAddress.into())
+                .and_then(|value| match value {
+                    PnpDevicePropertyValue::String(v) => Some(v),
+                    _ => None,
+                });
+
+            if let (Some(address), Some(battery)) = (address, battery) {
+                pnp_btc_devices_info.push((address, battery));
             }
         }
     }
