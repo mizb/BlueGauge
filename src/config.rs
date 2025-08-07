@@ -183,7 +183,7 @@ impl Config {
             .ok()
             .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
             .map(|parent_path| parent_path.join("BlueGauge.toml"))
-            .ok_or(anyhow!("Failed to get config path"))?;
+            .ok_or_else(|| anyhow!("Failed to get config path"))?;
 
         if config_path.is_file() {
             Config::read_toml(config_path.clone()).or_else(|e| {

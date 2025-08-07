@@ -191,9 +191,7 @@ fn process_btc_device(
     let btc_battery = pnp_btc_devices_info
         .iter()
         .find_map(|(pnp_address, pnp_battery)| btc_address.eq(pnp_address).then_some(*pnp_battery))
-        .ok_or(anyhow!(
-            "No matching Bluetooth Classic Device in Pnp device: {btc_name}"
-        ))?;
+        .ok_or_else(|| anyhow!("No matching Bluetooth Classic Device in Pnp device: {btc_name}"))?;
 
     let btc_status = btc_device.ConnectionStatus()? == BCS::Connected;
     Ok(BluetoothInfo {

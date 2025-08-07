@@ -48,32 +48,35 @@ pub fn load_battery_icon(
     match tray_icon_source {
         TrayIconSource::App => default_icon(),
         TrayIconSource::BatteryCustom { ref id } | TrayIconSource::BatteryFont { ref id, .. } => {
-            bluetooth_devices_info.iter().find(|i| i.id == *id).map_or(
-                load_icon(UNPAIRED_ICON_DATA),
-                |i| match tray_icon_source {
-                    TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
-                    TrayIconSource::BatteryFont {
-                        id: _,
-                        font_name,
-                        font_color,
-                        font_size,
-                    } => {
-                        let should_icon_connect_color = font_color
-                            .as_ref()
-                            .is_some_and(|c| c.eq("ConnectColor"))
-                            .then_some(i.status);
-
-                        get_icon_from_font(
-                            i.battery,
-                            &font_name,
+            bluetooth_devices_info
+                .iter()
+                .find(|i| i.id == *id)
+                .map_or_else(
+                    || load_icon(UNPAIRED_ICON_DATA),
+                    |i| match tray_icon_source {
+                        TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
+                        TrayIconSource::BatteryFont {
+                            id: _,
+                            font_name,
                             font_color,
                             font_size,
-                            should_icon_connect_color,
-                        )
-                    }
-                    _ => load_icon(UNPAIRED_ICON_DATA),
-                },
-            )
+                        } => {
+                            let should_icon_connect_color = font_color
+                                .as_ref()
+                                .is_some_and(|c| c.eq("ConnectColor"))
+                                .then_some(i.status);
+
+                            get_icon_from_font(
+                                i.battery,
+                                &font_name,
+                                font_color,
+                                font_size,
+                                should_icon_connect_color,
+                            )
+                        }
+                        _ => load_icon(UNPAIRED_ICON_DATA),
+                    },
+                )
         }
     }
 }
