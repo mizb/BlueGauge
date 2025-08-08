@@ -63,12 +63,12 @@ impl CreateMenuItem {
             .iter()
             .map(|info| {
                 CheckMenuItem::with_id(
-                    &info.id,
+                    &info.address,
                     &info.name,
                     true,
                     show_tray_battery_icon_bt_id
                         .as_deref()
-                        .is_some_and(|id| id.eq(&info.id)),
+                        .is_some_and(|id| id.eq(&info.address)),
                     None,
                 )
             })

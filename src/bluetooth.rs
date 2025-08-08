@@ -12,14 +12,14 @@ use std::{
 use anyhow::{Context, Result, anyhow};
 use windows::{
     Devices::Bluetooth::{
-        BluetoothConnectionStatus as BCS, BluetoothDevice, BluetoothLEDevice,
+        BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice,
         GenericAttributeProfile::{GattCharacteristicUuids, GattServiceUuids},
     },
     Devices::Enumeration::DeviceInformation,
     Storage::Streams::DataReader,
     core::GUID,
 };
-use windows_pnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator};
+use windows_pnp::{PnpDeviceNodeInfo, PnpDevicePropertyValue, PnpEnumerator, DeviceInstanceIdFilter};
 use windows_sys::{
     Wdk::Devices::Bluetooth::DEVPKEY_Bluetooth_DeviceAddress,
     Win32::{Devices::DeviceAndDriverInstallation::GUID_DEVCLASS_SYSTEM, Foundation::DEVPROPKEY},
@@ -37,7 +37,14 @@ pub struct BluetoothInfo {
     pub name: String,
     pub battery: u8,
     pub status: bool,
-    pub id: String,
+    pub address: String,
+    pub r#type: BluetoothType,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+enum BluetoothType {
+    Classic,
+    LowEnergy(u64),
 }
 
 pub fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
@@ -131,8 +138,8 @@ pub fn get_bluetooth_info(
 }
 
 fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
-    // 获取Pnp设备可能出错（具有不详），需重试多次避开错误
-    let pnp_btc_devices_info: Vec<(String, u8)> = {
+    // 获取Pnp设备可能出错（初始化可能失败），需重试多次避开错误
+    let pnp_btc_devices_info: Vec<(/* Address */ String, /* Battery */ u8)> = {
         let max_retries = 2;
         let mut attempts = 0;
 
@@ -193,12 +200,14 @@ fn process_btc_device(
         .find_map(|(pnp_address, pnp_battery)| btc_address.eq(pnp_address).then_some(*pnp_battery))
         .ok_or_else(|| anyhow!("No matching Bluetooth Classic Device in Pnp device: {btc_name}"))?;
 
-    let btc_status = btc_device.ConnectionStatus()? == BCS::Connected;
+    let btc_status = btc_device.ConnectionStatus()? == BluetoothConnectionStatus::Connected;
+
     Ok(BluetoothInfo {
         name: btc_name,
         battery: btc_battery,
         status: btc_status,
-        id: btc_address,
+        address: btc_address,
+        r#type: BluetoothType::Classic,
     })
 }
 
@@ -210,16 +219,18 @@ fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInfo> {
 
     let status = ble_device
         .ConnectionStatus()
-        .map(|status| matches!(status, BCS::Connected))
+        .map(|status| status == BluetoothConnectionStatus::Connected)
         .with_context(|| format!("Failed to get BLE connected status: {name}"))?;
 
-    let id = format!("{:012X}", ble_device.BluetoothAddress()?);
+    let address_u64 = ble_device.BluetoothAddress()?;
+    let address_string = format!("{:012X}", address_u64);
 
     Ok(BluetoothInfo {
         name,
         battery,
         status,
-        id,
+        address: address_string,
+        r#type: BluetoothType::LowEnergy(address_u64),
     })
 }
 
@@ -266,10 +277,6 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
     let bt_devices_info = get_pnp_bt_devices(GUID_DEVCLASS_SYSTEM)?;
 
     for bt_device_info in bt_devices_info {
-        if !bt_device_info.device_instance_id.contains(BT_INSTANCE_ID) {
-            continue;
-        }
-
         if let Some(mut props) = bt_device_info.device_instance_properties {
             let battery = props
                 .remove(&DEVPKEY_Bluetooth_Battery.into())
@@ -295,7 +302,7 @@ fn get_pnp_btc_devices_info() -> Result<Vec<(String, u8)>> {
 }
 
 fn get_pnp_bt_devices(guid: windows_sys::core::GUID) -> Result<Vec<PnpDeviceNodeInfo>> {
-    PnpEnumerator::enumerate_present_devices_by_device_setup_class(guid)
+    PnpEnumerator::enumerate_present_devices_and_filter_device_instance_id_by_device_setup_class(guid, DeviceInstanceIdFilter::Contains(BT_INSTANCE_ID.to_owned()))
         .map_err(|e| anyhow!("Failed to enumerate pnp devices - {e:?}"))
 }
 
@@ -336,10 +343,10 @@ pub fn compare_bt_info_to_send_notifications(
         for old in &change_old_bt_info {
             for new in &change_new_bt_info {
                 // 低电量 / 重新连接 / 断开连接 的同一设备
-                if old.id == new.id {
+                if old.address == new.address {
                     if new.battery != old.battery {
                         let is_low = new.battery < low_battery;
-                        let was_low = notified_low_battery.contains(&new.id);
+                        let was_low = notified_low_battery.contains(&new.address);
                         match (was_low, is_low) {
                             (false, true) => {
                                 // 第一次进入低电量
@@ -347,11 +354,11 @@ pub fn compare_bt_info_to_send_notifications(
                                     format!("{} {low_battery}%", loc.bluetooth_battery_below);
                                 let text = format!("{}: {}%", new.name, new.battery);
                                 notify(title, text, mute);
-                                notified_low_battery.insert(new.id.clone());
+                                notified_low_battery.insert(new.address.clone());
                             }
                             (true, false) => {
                                 // 电量回升，允许下次低电量时再次通知
-                                notified_low_battery.remove(&new.id);
+                                notified_low_battery.remove(&new.address);
                             }
                             _ => (),
                         }

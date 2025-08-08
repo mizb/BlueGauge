@@ -70,6 +70,12 @@ use windows_sys::{
     },
 };
 
+pub enum DeviceInstanceIdFilter {
+    Contains(String),
+    StartWith(String),
+    Eq(String),
+}
+
 pub struct PnpEnumerator {
 }
 //
@@ -77,25 +83,30 @@ impl PnpEnumerator {
     pub fn enumerate_present_devices() -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
         let options = vec![EnumerateOption::IncludeInstanceProperties, EnumerateOption::IncludeDeviceInterfaceProperties, EnumerateOption::IncludeSetupClassProperties, EnumerateOption::IncludeDeviceInterfaceClassProperties];
         
-        PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::AllDevices, options)
+        PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::AllDevices, options, None)
     }
     //
     pub fn enumerate_present_devices_by_device_interface_class(device_interface_class_guid: GUID) -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
         let options = vec![EnumerateOption::IncludeInstanceProperties, EnumerateOption::IncludeDeviceInterfaceProperties, EnumerateOption::IncludeSetupClassProperties, EnumerateOption::IncludeDeviceInterfaceClassProperties];
-        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::DeviceInterfaceClassGuid(device_interface_class_guid), options);
+        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::DeviceInterfaceClassGuid(device_interface_class_guid), options, None);
     }
     //
     pub fn enumerate_present_devices_by_device_setup_class(device_setup_class_guid: GUID) -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
         let options = vec![EnumerateOption::IncludeInstanceProperties, EnumerateOption::IncludeDeviceInterfaceProperties, EnumerateOption::IncludeSetupClassProperties, EnumerateOption::IncludeDeviceInterfaceClassProperties];
-        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::DeviceSetupClassGuid(device_setup_class_guid), options);
+        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::DeviceSetupClassGuid(device_setup_class_guid), options, None);
     }
     //
     pub fn enumerate_present_devices_by_pnp_enumerator_id(pnp_enumerator_id: &str) -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
         let options = vec![EnumerateOption::IncludeInstanceProperties, EnumerateOption::IncludeDeviceInterfaceProperties, EnumerateOption::IncludeSetupClassProperties, EnumerateOption::IncludeDeviceInterfaceClassProperties];
-        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::PnpEnumeratorId(pnp_enumerator_id.to_string()), options);
+        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::PnpEnumeratorId(pnp_enumerator_id.to_string()), options, None);
     }
     //
-    pub fn enumerate_present_devices_with_options(enumerate_specifier: EnumerateSpecifier, options: Vec<EnumerateOption>) -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
+    pub fn enumerate_present_devices_and_filter_device_instance_id_by_device_setup_class(device_setup_class_guid: GUID, device_instance_id_filter: DeviceInstanceIdFilter) -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
+        let options = vec![EnumerateOption::IncludeInstanceProperties, EnumerateOption::IncludeDeviceInterfaceProperties, EnumerateOption::IncludeSetupClassProperties, EnumerateOption::IncludeDeviceInterfaceClassProperties];
+        return PnpEnumerator::enumerate_present_devices_with_options(EnumerateSpecifier::DeviceSetupClassGuid(device_setup_class_guid), options, Some(device_instance_id_filter));
+    }
+    //
+    pub fn enumerate_present_devices_with_options(enumerate_specifier: EnumerateSpecifier, options: Vec<EnumerateOption>, device_instance_id_filter: Option<DeviceInstanceIdFilter>) -> Result<Vec<PnpDeviceNodeInfo>, EnumerateError> {
         let mut result = Vec::<PnpDeviceNodeInfo>::new();
 
         // configure our variables based on the enumerate specifier
@@ -118,7 +129,6 @@ impl PnpEnumerator {
                 flags |= DIGCF_DEVICEINTERFACE;
             },
             EnumerateSpecifier::DeviceSetupClassGuid(setup_class_guid) => {
-                std::hint::black_box(&setup_class_guid); // Release 模式编译器优化 导致的 Bug
                 pnp_enumerator = None;
                 class_guid = Some(&setup_class_guid);
                 device_interface_class_guid = None;
@@ -231,6 +241,27 @@ impl PnpEnumerator {
                         return Err(EnumerateError::Win32ErrorInvalidData(invalid_data_error));
                     },
                 };
+
+                // filter the specified instance ID device (BlueGauge)
+                if let Some(ref device_instance_id_filter) = device_instance_id_filter {
+                    match device_instance_id_filter {
+                        DeviceInstanceIdFilter::Contains(id) => {
+                            if !device_instance_id.contains(id) {
+                                continue;
+                            }
+                        },
+                        DeviceInstanceIdFilter::StartWith(id) => {
+                            if !device_instance_id.starts_with(id) {
+                                continue;
+                            }
+                        },
+                        DeviceInstanceIdFilter::Eq(id) => {
+                            if device_instance_id != *id {
+                                continue;
+                            }
+                        },
+                    }
+                }
 
                 // for all devices: capture the base container id of the device
                 //

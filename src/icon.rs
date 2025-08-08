@@ -50,7 +50,7 @@ pub fn load_battery_icon(
         TrayIconSource::BatteryCustom { ref id } | TrayIconSource::BatteryFont { ref id, .. } => {
             bluetooth_devices_info
                 .iter()
-                .find(|i| i.id == *id)
+                .find(|i| i.address == *id)
                 .map_or_else(
                     || load_icon(UNPAIRED_ICON_DATA),
                     |i| match tray_icon_source {
