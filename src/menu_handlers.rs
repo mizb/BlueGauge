@@ -1,13 +1,11 @@
-use std::{ops::Deref, path::Path, sync::atomic::Ordering};
+use std::{collections::HashSet, ops::Deref, path::Path, sync::atomic::Ordering};
 
 use crate::{
-    config::{Config, TrayIconSource},
-    notify::app_notify,
-    startup::set_startup,
+    bluetooth::{info::BluetoothInfo, listen::{listen_bluetooth_device_info, stop_bluetooth_monitoring}}, config::{Config, TrayIconSource}, notify::app_notify, startup::set_startup, UserEvent
 };
 
 use tray_icon::menu::CheckMenuItem;
-use winit::event_loop::ActiveEventLoop;
+use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 
 pub struct MenuHandlers;
 
@@ -221,8 +219,10 @@ impl MenuHandlers {
 
     #[rustfmt::skip]
     pub fn set_tray_icon_source(
+        bluetooth_devices_info: HashSet<BluetoothInfo>,
         config: &Config,
         menu_event_id: &str,
+        proxy: EventLoopProxy<UserEvent>,
         tray_check_menus: Vec<CheckMenuItem>,
     ) {
         let not_bluetooth_item_id = [
@@ -236,7 +236,7 @@ impl MenuHandlers {
             "show_disconnected", "truncate_name", "prefix_battery",
         ];
 
-        let show_battery_icon_bt_id = menu_event_id;
+        let show_battery_icon_bt_address = menu_event_id;
 
         // 只处理显示蓝牙电量图标相关的菜单项
         let bluetooth_menus: Vec<_> = tray_check_menus
@@ -244,13 +244,13 @@ impl MenuHandlers {
             .filter(|item| !not_bluetooth_item_id.contains(&item.id().as_ref()))
             .collect();
 
-        let is_checked = bluetooth_menus.iter().any(|item| {
-            item.id().as_ref() == show_battery_icon_bt_id && item.is_checked()
+        let new_bt_menu_is_checked = bluetooth_menus.iter().any(|item| {
+            item.id().as_ref() == show_battery_icon_bt_address && item.is_checked()
         });
 
         bluetooth_menus.iter().for_each(|item| {
             let should_check =
-                item.id().as_ref() == show_battery_icon_bt_id && is_checked;
+                item.id().as_ref() == show_battery_icon_bt_address && new_bt_menu_is_checked;
             item.set_checked(should_check);
         });
 
@@ -258,7 +258,7 @@ impl MenuHandlers {
             config.tray_options.tray_icon_source.lock().unwrap();
 
         match original_tray_icon_source.deref() {
-            TrayIconSource::App if is_checked => {
+            TrayIconSource::App if new_bt_menu_is_checked => {
                 let have_custom_icons = std::env::current_exe()
                     .ok()
                     .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
@@ -270,29 +270,41 @@ impl MenuHandlers {
 
                 if have_custom_icons {
                     *original_tray_icon_source = TrayIconSource::BatteryCustom {
-                        id: show_battery_icon_bt_id.to_owned(),
+                        id: show_battery_icon_bt_address.to_owned(),
                     };
                 } else {
                     *original_tray_icon_source = TrayIconSource::BatteryFont {
-                        id: show_battery_icon_bt_id.to_owned(),
+                        id: show_battery_icon_bt_address.to_owned(),
                         font_name: "Arial".to_owned(),
                         font_color: Some("FollowSystemTheme".to_owned()),
                         font_size: Some(64)
                     };
                 };
+
+                if let Some(bluetooth_info) = bluetooth_devices_info.iter().find(|i| i.address == show_battery_icon_bt_address) {
+                    listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy))
+                        .expect(&format!("Failed to listen {}", bluetooth_info.name));
+                }
             }
             TrayIconSource::BatteryCustom { .. }
             | TrayIconSource::BatteryFont { .. } => {
-                if is_checked {
-                    original_tray_icon_source.update_id(show_battery_icon_bt_id);
+                if new_bt_menu_is_checked {
+                    original_tray_icon_source.update_id(show_battery_icon_bt_address);
+                    if let Some(bluetooth_info) = bluetooth_devices_info.iter().find(|i| i.address == show_battery_icon_bt_address) {
+                        listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy))
+                            .expect(&format!("Failed to listen {}", bluetooth_info.name));
+                    }
                 } else {
                     *original_tray_icon_source = TrayIconSource::App;
+                    
+                    stop_bluetooth_monitoring().expect("Failed to stop listen")
                 }
             }
             _ => return,
         }
-        // 释放锁，避免在Config的svae发生死锁.
-        drop(original_tray_icon_source);
+
+        // 更新配置
+        drop(original_tray_icon_source); // 释放锁，避免在Config的svae发生死锁.
         config.save();
         config.force_update.store(true, Ordering::SeqCst);
     }

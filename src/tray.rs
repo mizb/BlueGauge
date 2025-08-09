@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::ops::Deref;
 
-use crate::bluetooth::BluetoothInfo;
+use crate::bluetooth::info::BluetoothInfo;
 use crate::config::{Config, TrayIconSource};
 use crate::icon::{LOGO_DATA, load_battery_icon, load_icon};
 use crate::language::{Language, Localization};

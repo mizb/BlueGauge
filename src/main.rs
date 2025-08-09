@@ -11,10 +11,11 @@ mod notify;
 mod startup;
 mod tray;
 
-use crate::bluetooth::{
+use crate::bluetooth::info::{
     BluetoothInfo, compare_bt_info_to_send_notifications, find_bluetooth_devices,
     get_bluetooth_info,
 };
+use crate::bluetooth::listen::{listen_bluetooth_device_info, listen_bluetooth_devices_info};
 use crate::config::*;
 use crate::icon::load_battery_icon;
 use crate::menu_handlers::MenuHandlers;
@@ -22,7 +23,7 @@ use crate::notify::app_notify;
 use crate::tray::{convert_tray_info, create_menu, create_tray};
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex, atomic::Ordering};
+use std::sync::{Arc, Mutex};
 
 use tray_icon::{
     TrayIcon,
@@ -93,7 +94,8 @@ impl Default for App {
 #[derive(Debug)]
 enum UserEvent {
     MenuEvent(MenuEvent),
-    UpdateTray(bool), // bool: Force Update
+    UpdateTray(/* Force Update */ bool), // bool: Force Update
+    UpdateTrayForBluetooth(BluetoothInfo),
 }
 
 impl App {
@@ -108,25 +110,26 @@ impl ApplicationHandler<UserEvent> for App {
         let config = Arc::clone(&self.config);
         let proxy = self.event_loop_proxy.clone().expect("Failed to get proxy");
 
-        std::thread::spawn(move || {
-            loop {
-                let update_interval = config.get_update_interval();
-
-                let mut need_force_update = false;
-
-                for _ in 0..update_interval {
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                    if config.force_update.swap(false, Ordering::SeqCst) {
-                        need_force_update = true;
-                        break;
-                    }
-                }
-
-                proxy
-                    .send_event(UserEvent::UpdateTray(need_force_update))
-                    .expect("Failed to send UpdateTray Event");
+        if let Some(bluetooth_device_address) = config
+            .tray_options
+            .tray_icon_source
+            .lock()
+            .unwrap()
+            .get_id()
+        {
+            if let Some(bluetooth_info) = self
+                .bluetooth_info
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|i| i.address == bluetooth_device_address)
+            {
+                listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone()))
+                    .expect(&format!("Failed to listen {}", bluetooth_info.name));
             }
-        });
+        };
+
+        listen_bluetooth_devices_info(config, proxy);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -182,9 +185,12 @@ impl ApplicationHandler<UserEvent> for App {
                         MenuHandlers::set_tray_tooltip(&config, menu_event_id, tray_check_menus);
                     }
                     _ => {
+                        let proxy = self.event_loop_proxy.clone().expect("Failed to get proxy");
                         MenuHandlers::set_tray_icon_source(
+                            self.bluetooth_info.lock().unwrap().clone(),
                             &config,
                             menu_event_id,
+                            proxy,
                             tray_check_menus,
                         );
                     }
@@ -235,6 +241,39 @@ impl ApplicationHandler<UserEvent> for App {
                     let icon = load_battery_icon(&config, &new_bt_info)
                         .expect("Failed to load battery icon");
                     let bluetooth_tooltip_info = convert_tray_info(&new_bt_info, &config);
+                    tray.set_menu(Some(Box::new(tray_menu)));
+                    tray.set_tooltip(Some(bluetooth_tooltip_info.join("\n")))
+                        .expect("Failed to update tray tooltip");
+                    tray.set_icon(Some(icon)).expect("Failed to set tray icon");
+                }
+
+                if let Some(tray_check_menus) = self.tray_check_menus.lock().unwrap().as_mut() {
+                    *tray_check_menus = new_tray_check_menus;
+                }
+            }
+            UserEvent::UpdateTrayForBluetooth(bluetooth_info) => {
+                println!("Need to update the info immediately: {}", bluetooth_info.name);
+                let current_bt_info = {
+                    let mut original_bt_info = self.bluetooth_info.lock().unwrap();
+                    original_bt_info.retain(|i| i.address != bluetooth_info.address);
+                    original_bt_info.insert(bluetooth_info);
+                    original_bt_info.clone()
+                };
+
+                let config = Arc::clone(&self.config);
+
+                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &current_bt_info) {
+                    Ok(menu) => menu,
+                    Err(e) => {
+                        app_notify(format!("Failed to create tray menu - {e}"));
+                        return;
+                    }
+                };
+
+                if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
+                    let icon = load_battery_icon(&config, &current_bt_info)
+                        .expect("Failed to load battery icon");
+                    let bluetooth_tooltip_info = convert_tray_info(&current_bt_info, &config);
                     tray.set_menu(Some(Box::new(tray_menu)));
                     tray.set_tooltip(Some(bluetooth_tooltip_info.join("\n")))
                         .expect("Failed to update tray tooltip");

@@ -57,6 +57,14 @@ pub enum TrayIconSource {
 }
 
 impl TrayIconSource {
+    pub fn get_id(&self) -> Option<String> {
+        match self {
+            Self::App => None,
+            Self::BatteryCustom { id } => Some(id.clone()),
+            Self::BatteryFont { id, .. } => Some(id.clone()),
+        }
+    }
+
     pub fn update_id(&mut self, new_id: &str) {
         match self {
             Self::App => (),

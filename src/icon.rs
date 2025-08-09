@@ -1,5 +1,5 @@
 use crate::{
-    bluetooth::BluetoothInfo,
+    bluetooth::info::BluetoothInfo,
     config::{Config, TrayIconSource},
 };
 
