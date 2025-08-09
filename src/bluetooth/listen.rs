@@ -1,7 +1,11 @@
 use crate::{
+    UserEvent,
     bluetooth::{
-        ble::{find_ble_device, process_ble_device}, btc::{find_btc_device, get_pnp_device_info}, info::{BluetoothInfo, BluetoothType}
-    }, config::Config, UserEvent
+        ble::{find_ble_device, process_ble_device},
+        btc::{find_btc_device, get_pnp_device_info},
+        info::{BluetoothInfo, BluetoothType},
+    },
+    config::Config,
 };
 
 use std::sync::{
@@ -9,9 +13,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use anyhow::{anyhow, Result};
-use winit::event_loop::EventLoopProxy;
+use anyhow::{Result, anyhow};
 use windows::Devices::Bluetooth::BluetoothConnectionStatus;
+use winit::event_loop::EventLoopProxy;
 
 pub fn listen_bluetooth_devices_info(config: Arc<Config>, proxy: EventLoopProxy<UserEvent>) {
     std::thread::spawn(move || {
@@ -64,22 +68,19 @@ impl ThreadManager {
         if let (Some(handle), Some(exit_flag)) = (self.handle.take(), self.exit_flag.take()) {
             // 设置退出标志
             exit_flag.store(true, Ordering::Relaxed);
-            
+
             // 等待线程结束
             match handle.join() {
-                Ok(()) => {
-                    println!("[{}] Thread stopped successfully", device_name);
-                    Ok(())
-                }
+                Ok(()) => println!("[{device_name}] Thread stopped successfully"),
                 Err(_) => {
-                    eprintln!("[{}] Thread panicked during cleanup", device_name);
-                    Err(anyhow!("Thread panicked"))
+                    eprintln!("[{device_name}] Thread panicked during cleanup");
+                    return Err(anyhow!("Thread panicked"));
                 }
             }
         } else {
             println!("No thread to stop");
-            Ok(())
         }
+        Ok(())
     }
 }
 
@@ -108,7 +109,7 @@ pub fn listen_bluetooth_device_info(
                 .as_ref()
                 .map(|i| i.name.clone())
                 .unwrap_or_else(|| "Unknown Device".to_string());
-            
+
             if let Err(e) = state.cleanup(&device_name) {
                 eprintln!("Failed to cleanup previous thread: {e}");
             }
@@ -126,10 +127,13 @@ pub fn listen_bluetooth_device_info(
             }
         };
         let thread_proxy = proxy.clone();
-    
+
         // 创建新线程
         let handle = std::thread::spawn(move || {
-            println!("Bluetooth monitoring thread started for device: {}", thread_bluetooth_device.name);
+            println!(
+                "Bluetooth monitoring thread started for device: {}",
+                thread_bluetooth_device.name
+            );
 
             let mut current_device_info = thread_bluetooth_device.clone();
 
@@ -145,28 +149,27 @@ pub fn listen_bluetooth_device_info(
                 }
 
                 let processing_result = match current_device_info.r#type {
-                    BluetoothType::Classic(ref instance_id, address) => {
-                        process_classic_device(
-                            instance_id, 
-                            address, 
-                            &current_device_info, 
-                            &thread_proxy,
-                            &thread_exit_flag
-                        ) 
-                    }
-                    BluetoothType::LowEnergy(address) => {
-                        process_le_device(
-                            address, 
-                            &current_device_info, 
-                            &thread_proxy,
-                            &thread_exit_flag
-                        )
-                    }
+                    BluetoothType::Classic(ref instance_id, address) => process_classic_device(
+                        instance_id,
+                        address,
+                        &current_device_info,
+                        &thread_proxy,
+                        &thread_exit_flag,
+                    ),
+                    BluetoothType::LowEnergy(address) => process_le_device(
+                        address,
+                        &current_device_info,
+                        &thread_proxy,
+                        &thread_exit_flag,
+                    ),
                 };
 
                 // 如果处理成功并返回了更新的信息，则更新全局状态
                 if let Ok(Some(new_info)) = processing_result {
-                    println!("Updating device info: {} - Status: {}, Battery: {}", new_info.name, new_info.status, new_info.battery);
+                    println!(
+                        "Updating device info: {} - Status: {}, Battery: {}",
+                        new_info.name, new_info.status, new_info.battery
+                    );
                     current_device_info = new_info.clone();
 
                     if let Some(mutex) = THREAD_STATE.get() {
@@ -178,10 +181,10 @@ pub fn listen_bluetooth_device_info(
 
                 // 根据设备状态确定总间隔时间（秒）
                 let total_interval_secs = match current_device_info.status {
-                    true if current_device_info.battery > 30 => 15,  // 连接且电量充足：15秒
-                    true if current_device_info.battery <= 30 => 10, // 连接但电量低：10秒
-                    false => 5,                              // 未连接：5秒（快速检测）
-                    _ => 15,                                 // 默认：15秒
+                    true if current_device_info.battery > 30 => 10, // 连接且电量充足：10秒
+                    true if current_device_info.battery <= 30 => 7, // 连接但电量低：7秒
+                    false => 5,                                     // 未连接：5秒（快速检测）
+                    _ => 10,                                        // 默认：10秒
                 };
 
                 // 将总时间转换为检查次数（每次100ms）
@@ -196,7 +199,10 @@ pub fn listen_bluetooth_device_info(
                 }
             }
 
-            println!("Bluetooth monitoring thread exited for device: {}", thread_bluetooth_device.name);
+            println!(
+                "Bluetooth monitoring thread exited for device: {}",
+                thread_bluetooth_device.name
+            );
         });
 
         // 保存状态
@@ -209,7 +215,7 @@ pub fn listen_bluetooth_device_info(
             .as_ref()
             .map(|i| i.name.clone())
             .unwrap_or_else(|| "Unknown Device".to_string());
-        
+
         state.cleanup(&device_name)?;
     }
 
@@ -232,18 +238,18 @@ fn process_classic_device(
     let pnp_device_battery = pnp_device_info.battery;
 
     let btc_device = find_btc_device(address)?;
-    let btc_address_u64 = btc_device.BluetoothAddress()
+    let btc_address_u64 = btc_device
+        .BluetoothAddress()
         .map_err(|e| anyhow!("Failed to get btc address - {e}"))?;
-    let btc_address_mac = format!("{:012X}", btc_address_u64);
-    let btc_status = btc_device.ConnectionStatus()
+    let btc_address_mac = format!("{btc_address_u64:012X}");
+    let btc_status = btc_device
+        .ConnectionStatus()
         .map(|status| status == BluetoothConnectionStatus::Connected)
         .unwrap_or(false);
 
     if btc_address_mac == pnp_device_address
-        && (
-            thread_bluetooth_device.status != btc_status
-            || thread_bluetooth_device.battery != pnp_device_battery
-        )
+        && (thread_bluetooth_device.status != btc_status
+            || thread_bluetooth_device.battery != pnp_device_battery)
     {
         let current_blc_info = BluetoothInfo {
             name: thread_bluetooth_device.name.clone(),
@@ -252,7 +258,7 @@ fn process_classic_device(
             address: btc_address_mac,
             r#type: thread_bluetooth_device.r#type.clone(),
         };
-        
+
         if let Some(proxy) = proxy {
             proxy
                 .send_event(UserEvent::UpdateTrayForBluetooth(current_blc_info.clone()))
@@ -261,7 +267,10 @@ fn process_classic_device(
 
         Ok(Some(current_blc_info))
     } else {
-        println!("No need to update current Bluetooth device - {}", thread_bluetooth_device.name);
+        println!(
+            "No need to update current Bluetooth device - {}",
+            thread_bluetooth_device.name
+        );
         Ok(None)
     }
 }
@@ -289,7 +298,10 @@ fn process_le_device(
 
         Ok(Some(current_ble_info))
     } else {
-        println!("No need to update current Bluetooth device - {}", thread_bluetooth_device.name);
+        println!(
+            "No need to update current Bluetooth device - {}",
+            thread_bluetooth_device.name
+        );
         Ok(None)
     }
 }

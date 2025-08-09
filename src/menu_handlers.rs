@@ -1,7 +1,14 @@
 use std::{collections::HashSet, ops::Deref, path::Path, sync::atomic::Ordering};
 
 use crate::{
-    bluetooth::{info::BluetoothInfo, listen::{listen_bluetooth_device_info, stop_bluetooth_monitoring}}, config::{Config, TrayIconSource}, notify::app_notify, startup::set_startup, UserEvent
+    UserEvent,
+    bluetooth::{
+        info::BluetoothInfo,
+        listen::{listen_bluetooth_device_info, stop_bluetooth_monitoring},
+    },
+    config::{Config, TrayIconSource},
+    notify::app_notify,
+    startup::set_startup,
 };
 
 use tray_icon::menu::CheckMenuItem;

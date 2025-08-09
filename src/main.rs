@@ -252,7 +252,10 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             UserEvent::UpdateTrayForBluetooth(bluetooth_info) => {
-                println!("Need to update the info immediately: {}", bluetooth_info.name);
+                println!(
+                    "Need to update the info immediately: {}",
+                    bluetooth_info.name
+                );
                 let current_bt_info = {
                     let mut original_bt_info = self.bluetooth_info.lock().unwrap();
                     original_bt_info.retain(|i| i.address != bluetooth_info.address);
@@ -262,7 +265,8 @@ impl ApplicationHandler<UserEvent> for App {
 
                 let config = Arc::clone(&self.config);
 
-                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &current_bt_info) {
+                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &current_bt_info)
+                {
                     Ok(menu) => menu,
                     Err(e) => {
                         app_notify(format!("Failed to create tray menu - {e}"));

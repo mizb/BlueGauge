@@ -34,8 +34,8 @@ pub fn find_ble_devices() -> Result<Vec<BluetoothLEDevice>> {
 }
 
 pub fn find_ble_device(address: u64) -> Result<BluetoothLEDevice> {
-    BluetoothLEDevice::FromBluetoothAddressAsync(address)?.
-        get()
+    BluetoothLEDevice::FromBluetoothAddressAsync(address)?
+        .get()
         .map_err(|e| anyhow!("Failed to find ble ({address}) - {e}"))
 }
 
