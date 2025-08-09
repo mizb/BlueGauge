@@ -58,8 +58,10 @@ Welcome contributions from developers who can help us extend support for these d
 
 ## Other Bluetooth battery display software
 
-1. Apple
+ - Supports more devices：[Bluetooth Battery Monitor](https://www.bluetoothgoodies.com/) (**Purchase**)
 
-2. Samsung
+ - Apple: [MagicPods](https://apps.microsoft.com/detail/9P6SKKFKSHKM) (**Purchase**)
 
-3. Huawei
+ - Huawei: [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds)
+
+ - Samsung: [Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)

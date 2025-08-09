@@ -60,8 +60,10 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 ## 其他蓝牙电量软件
 
-1. 苹果
+ - 支持较多设备：[Bluetooth Battery Monitor](https://www.bluetoothgoodies.com/) (**付费**)
 
-2. 华为
+ - 苹果：[MagicPods](https://apps.microsoft.com/detail/9P6SKKFKSHKM)
 
-3. 三星
+ - 华为：[OpenFreebuds](https://github.com/melianmiko/OpenFreebuds)
+
+ - 三星：[Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)
