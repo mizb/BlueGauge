@@ -18,7 +18,7 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         `font_color` = `"十六进制颜色代码，如 #FFFFFF、#00D26A"`（默认 `FollowSystemTheme`，字体颜色跟随系统主题）  
         `font_size` = `0~255`  （默认 `64`）   
         3. 重新启动 BlueGauge
-
+        4. 其他：图标颜色支持连接配色，在`设置`-`托盘选项`-`设置图标颜色为连接配色`（已连接为绿色，断开连接为红色）
     ![image](screenshots/battery.png)
 
     - 使用自定义图片  
@@ -62,7 +62,7 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
  - 支持较多设备：[Bluetooth Battery Monitor](https://www.bluetoothgoodies.com/) (**付费**)
 
- - 苹果：[MagicPods](https://apps.microsoft.com/detail/9P6SKKFKSHKM)
+ - 苹果：[MagicPods](https://apps.microsoft.com/detail/9P6SKKFKSHKM) (**付费**)
 
  - 华为：[OpenFreebuds](https://github.com/melianmiko/OpenFreebuds)
 

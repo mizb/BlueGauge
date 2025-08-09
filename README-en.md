@@ -10,13 +10,13 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 - [x] Setting：Bluetooth battery level as tray icon  
 
     - Use system font (default):  
-        1. Check the device that needs to display the battery, open tray menu -- `Settings` -- `Open Config`
-        2. Set font  
+        1. check the device that needs to display the battery, open tray menu -- `Settings` -- `Open Config`
+        2. set font  
         `font_name` = `"System Font Nmae, e.g. Microsoft YaHei UI"`  
         `font_color` = `"Hex color code，e.g. #FFFFFF、#00D26A"` (Default `"FollowSystemTheme"`)  
         `font_size` = `0~255` (Default `64`)   
         3. restart BlueGauge
-
+        4. others: the icon color supports connection color matching, set the icon color to the connection color in `Settings`-`Tray Options` (connected as green, disconnected as red)
     ![image](screenshots/battery.png)
 
     - Use custom pictures  
