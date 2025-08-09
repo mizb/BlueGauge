@@ -139,9 +139,9 @@ fn render_battery_font_icon(
     let font_size = font_size.and_then(|s| s.ne(&64).then_some(s as f64));
     let font_color = if let Some(should) = should_icon_connect_color {
         if should {
-            "#55B978".to_owned()
+            "#4fc478".to_owned()
         } else {
-            "#FF7272".to_owned()
+            "#fe6666ff".to_owned()
         }
     } else {
         font_color
