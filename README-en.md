@@ -21,8 +21,8 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         <div align="center">
             <img src="screenshots/battery.png" style="width=90%; display:block; margin:0 auto 10px;" />
             <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
-                <img src="screenshots/connect.png" alt="左下图片" style="width:50%; display:block;">
-                <img src="screenshots/disconnect.png" alt="右下图片" style="width:50%; display:block;">
+                <img src="screenshots/connect.png" alt="左下图片" style="width:45%; display:block;">
+                <img src="screenshots/disconnect.png" alt="右下图片" style="width:45%; display:block;">
             </div>
         </div>
 
