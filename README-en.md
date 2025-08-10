@@ -17,7 +17,14 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         `font_size` = `0~255` (Default `64`)   
         3. restart BlueGauge
         4. others: the icon color supports connection color matching, set the icon color to the connection color in `Settings`-`Tray Options` (connected as green, disconnected as red)
-    ![image](screenshots/battery.png)
+
+        <div align="center">
+            <img src="screenshots/battery.png" style="width=90%; display:block; margin:0 auto 10px;" />
+            <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
+                <img src="screenshots/connect.png" alt="左下图片" style="width:50%; display:block;">
+                <img src="screenshots/disconnect.png" alt="右下图片" style="width:50%; display:block;">
+            </div>
+        </div>
 
     - Use custom pictures  
         1. create an `assets` folder in the BlueGauge directory

@@ -19,7 +19,14 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         `font_size` = `0~255`  （默认 `64`）   
         3. 重新启动 BlueGauge
         4. 其他：图标颜色支持连接配色，在`设置`-`托盘选项`-`设置图标颜色为连接配色`（已连接为绿色，断开连接为红色）
-    ![image](screenshots/battery.png)
+
+        <div align="center">
+            <img src="screenshots/battery.png" style="width=90%; display:block; margin:0 auto 10px;" />
+            <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
+                <img src="screenshots/connect.png" alt="左下图片" style="width:50%; display:block;">
+                <img src="screenshots/disconnect.png" alt="右下图片" style="width:50%; display:block;">
+            </div>
+        </div>
 
     - 使用自定义图片  
         1. 在软件目录下创建一个 `assets` 文件夹，
