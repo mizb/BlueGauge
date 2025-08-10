@@ -124,8 +124,9 @@ impl ApplicationHandler<UserEvent> for App {
                 .iter()
                 .find(|i| i.address == bluetooth_device_address)
             {
-                listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone()))
-                    .expect(&format!("Failed to listen {}", bluetooth_info.name));
+                if let Err(e) =  listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone())) {
+                    println!("Failed to listen {}: {e}", bluetooth_info.name)
+                }
             }
         };
 

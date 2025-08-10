@@ -289,8 +289,9 @@ impl MenuHandlers {
                 };
 
                 if let Some(bluetooth_info) = bluetooth_devices_info.iter().find(|i| i.address == show_battery_icon_bt_address) {
-                    listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy))
-                        .expect(&format!("Failed to listen {}", bluetooth_info.name));
+                    if let Err(e) =  listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy)) {
+                        println!("Failed to listen {}: {e}", bluetooth_info.name)
+                    }
                 }
             }
             TrayIconSource::BatteryCustom { .. }
@@ -298,8 +299,9 @@ impl MenuHandlers {
                 if new_bt_menu_is_checked {
                     original_tray_icon_source.update_id(show_battery_icon_bt_address);
                     if let Some(bluetooth_info) = bluetooth_devices_info.iter().find(|i| i.address == show_battery_icon_bt_address) {
-                        listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy))
-                            .expect(&format!("Failed to listen {}", bluetooth_info.name));
+                        if let Err(e) =  listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy)) {
+                            println!("Failed to listen {}: {e}", bluetooth_info.name)
+                        }
                     }
                 } else {
                     *original_tray_icon_source = TrayIconSource::App;
