@@ -137,10 +137,10 @@ pub fn listen_bluetooth_device_info(
 
             let mut current_device_info = thread_bluetooth_device.clone();
 
-            if let Some(mutex) = THREAD_STATE.get() {
-                if let Ok(mut state) = mutex.lock() {
-                    state.current_bluetooth_info = Some(current_device_info.clone());
-                }
+            if let Some(mutex) = THREAD_STATE.get()
+                && let Ok(mut state) = mutex.lock()
+            {
+                state.current_bluetooth_info = Some(current_device_info.clone());
             }
 
             while !thread_exit_flag.load(Ordering::Relaxed) {
@@ -172,10 +172,10 @@ pub fn listen_bluetooth_device_info(
                     );
                     current_device_info = new_info.clone();
 
-                    if let Some(mutex) = THREAD_STATE.get() {
-                        if let Ok(mut state) = mutex.lock() {
-                            state.current_bluetooth_info = Some(new_info);
-                        }
+                    if let Some(mutex) = THREAD_STATE.get()
+                        && let Ok(mut state) = mutex.lock()
+                    {
+                        state.current_bluetooth_info = Some(new_info);
                     }
                 }
 
