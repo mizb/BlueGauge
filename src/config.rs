@@ -1,5 +1,5 @@
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
@@ -189,8 +189,7 @@ impl Config {
     pub fn open() -> Result<Self> {
         let config_path = env::current_exe()
             .ok()
-            .and_then(|exe_path| exe_path.parent().map(Path::to_path_buf))
-            .map(|parent_path| parent_path.join("BlueGauge.toml"))
+            .map(|exe_path| exe_path.with_file_name("BlueGauge.toml"))
             .ok_or_else(|| anyhow!("Failed to get config path"))?;
 
         if config_path.is_file() {
