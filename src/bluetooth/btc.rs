@@ -1,6 +1,6 @@
 use crate::bluetooth::info::{BluetoothInfo, BluetoothType};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow};
 use windows::Devices::{
@@ -56,7 +56,7 @@ pub fn find_btc_device(address: u64) -> Result<BluetoothDevice> {
 
 pub fn get_btc_info(btc_devices: &[BluetoothDevice]) -> Result<HashSet<BluetoothInfo>> {
     // 获取Pnp设备可能出错（初始化可能失败），需重试多次避开错误
-    let pnp_devices_info: Vec<PnpDeviceInfo> = {
+    let pnp_devices_info = {
         let max_retries = 2;
         let mut attempts = 0;
 
@@ -92,26 +92,16 @@ pub fn get_btc_info(btc_devices: &[BluetoothDevice]) -> Result<HashSet<Bluetooth
 
 pub fn process_btc_device(
     btc_device: &BluetoothDevice,
-    pnp_devices_info: &[PnpDeviceInfo],
+    pnp_devices_info: &HashMap<String, PnpDeviceInfo>,
 ) -> Result<BluetoothInfo> {
-    let btc_name: String = btc_device.Name()?.to_string().trim().into();
+    let btc_name = btc_device.Name()?.to_string().trim().to_owned();
 
     let btc_address_u64 = btc_device.BluetoothAddress()?;
     let btc_address_mac = format!("{btc_address_u64:012X}");
 
     let (pnp_instance_id, btc_battery) = pnp_devices_info
-        .iter()
-        .find_map(
-            |PnpDeviceInfo {
-                 address,
-                 battery,
-                 instance_id,
-             }| {
-                btc_address_mac
-                    .eq(address)
-                    .then_some((instance_id.clone(), *battery))
-            },
-        )
+        .get(&btc_address_mac)
+        .map(|i| (i.instance_id.clone(), i.battery))
         .ok_or_else(|| anyhow!("No matching Bluetooth Classic Device in Pnp device: {btc_name}"))?;
 
     let btc_status = btc_device.ConnectionStatus()? == BluetoothConnectionStatus::Connected;
@@ -125,8 +115,8 @@ pub fn process_btc_device(
     })
 }
 
-fn get_pnp_devices_info() -> Result<Vec<PnpDeviceInfo>> {
-    let mut pnp_devices_info: Vec<PnpDeviceInfo> = Vec::new();
+fn get_pnp_devices_info() -> Result<HashMap<String, PnpDeviceInfo>> {
+    let mut pnp_devices_info: HashMap<String, PnpDeviceInfo> = HashMap::new();
 
     let bt_devices_info = get_pnp_bt_devices()?;
 
@@ -147,11 +137,14 @@ fn get_pnp_devices_info() -> Result<Vec<PnpDeviceInfo>> {
                 });
 
             if let (Some(address), Some(battery)) = (address, battery) {
-                pnp_devices_info.push(PnpDeviceInfo {
-                    address,
-                    battery,
-                    instance_id: bt_device_info.device_instance_id,
-                });
+                pnp_devices_info.insert(
+                    address.clone(),
+                    PnpDeviceInfo {
+                        address,
+                        battery,
+                        instance_id: bt_device_info.device_instance_id,
+                    },
+                );
             }
         }
     }
