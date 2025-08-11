@@ -54,7 +54,7 @@ pub fn find_btc_device(address: u64) -> Result<BluetoothDevice> {
         .map_err(|e| anyhow!("Failed to find btc ({address}) - {e}"))
 }
 
-pub fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<BluetoothInfo>> {
+pub fn get_btc_info(btc_devices: &[BluetoothDevice]) -> Result<HashSet<BluetoothInfo>> {
     // 获取Pnp设备可能出错（初始化可能失败），需重试多次避开错误
     let pnp_devices_info: Vec<PnpDeviceInfo> = {
         let max_retries = 2;
@@ -81,7 +81,7 @@ pub fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<Bluetoo
 
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
 
-    btc_devices.into_iter().for_each(|btc_device| {
+    btc_devices.iter().for_each(|btc_device| {
         let _ = process_btc_device(btc_device, &pnp_devices_info)
             .inspect_err(|e| println!("\n{e}\n"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
@@ -91,7 +91,7 @@ pub fn get_btc_info(btc_devices: Vec<BluetoothDevice>) -> Result<HashSet<Bluetoo
 }
 
 pub fn process_btc_device(
-    btc_device: BluetoothDevice,
+    btc_device: &BluetoothDevice,
     pnp_devices_info: &[PnpDeviceInfo],
 ) -> Result<BluetoothInfo> {
     let btc_name: String = btc_device.Name()?.to_string().trim().into();

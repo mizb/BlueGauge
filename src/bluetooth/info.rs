@@ -38,7 +38,7 @@ pub fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLE
 }
 
 pub fn get_bluetooth_info(
-    bt_devices: (Vec<BluetoothDevice>, Vec<BluetoothLEDevice>),
+    bt_devices: (&[BluetoothDevice], &[BluetoothLEDevice]),
 ) -> Result<HashSet<BluetoothInfo>> {
     let btc_devices = bt_devices.0;
     let ble_devices = bt_devices.1;
@@ -46,17 +46,17 @@ pub fn get_bluetooth_info(
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth and Bluetooth LE devices found"
         )),
-        (0, _) => dbg!(get_ble_info(ble_devices).or_else(|e| {
+        (0, _) => dbg!(get_ble_info(&ble_devices).or_else(|e| {
             app_notify(format!("Warning: Failed to get BLE info: {e}"));
             Ok(HashSet::new())
         })),
-        (_, 0) => dbg!(get_btc_info(btc_devices).or_else(|e| {
+        (_, 0) => dbg!(get_btc_info(&btc_devices).or_else(|e| {
             app_notify(format!("Warning: Failed to get BTC info: {e}"));
             Ok(HashSet::new())
         })),
         (_, _) => {
-            let btc_result = dbg!(get_btc_info(btc_devices));
-            let ble_result = dbg!(get_ble_info(ble_devices));
+            let btc_result = dbg!(get_btc_info(&btc_devices));
+            let ble_result = dbg!(get_ble_info(&ble_devices));
 
             match (btc_result, ble_result) {
                 (Ok(btc_info), Ok(ble_info)) => {

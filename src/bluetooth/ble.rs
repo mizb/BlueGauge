@@ -39,12 +39,12 @@ pub fn find_ble_device(address: u64) -> Result<BluetoothLEDevice> {
         .map_err(|e| anyhow!("Failed to find ble ({address}) - {e}"))
 }
 
-pub fn get_ble_info(ble_devices: Vec<BluetoothLEDevice>) -> Result<HashSet<BluetoothInfo>> {
+pub fn get_ble_info(ble_devices: &[BluetoothLEDevice]) -> Result<HashSet<BluetoothInfo>> {
     let mut devices_info: HashSet<BluetoothInfo> = HashSet::new();
 
     let results = ble_devices.iter().map(process_ble_device);
 
-    results.into_iter().for_each(|r_ble_info| {
+    results.for_each(|r_ble_info| {
         let _ = r_ble_info
             .inspect_err(|e| println!("\n{e}\n"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
@@ -82,10 +82,16 @@ pub fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
     // 00002A19-0000-1000-8000-00805F9B34FB
     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
 
-    // windows-rs库的GetGattServicesForUuidAsync异步与tray-icon的异步（托盘点击事件？）可能存在冲突进而导致阻塞
-    let battery_gatt_service = ble_device
-        .GetGattService(battery_services_uuid)
-        .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Service: {e}"))?; // 手机蓝牙无电量服务;
+    let battery_gatt_services = ble_device
+        .GetGattServicesForUuidAsync(battery_services_uuid)?
+        .GetResults()?
+        .Services()
+        .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Services: {e}"))?;
+
+    let battery_gatt_service = battery_gatt_services
+        .into_iter()
+        .next()
+        .ok_or(anyhow!("Failed to get BLE Battery Gatt Service"))?; // 手机蓝牙无电量服务;
 
     let battery_gatt_chars = battery_gatt_service
         .GetCharacteristicsForUuidAsync(battery_level_uuid)?

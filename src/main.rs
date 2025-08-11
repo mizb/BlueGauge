@@ -75,7 +75,8 @@ impl Default for App {
 
         let bluetooth_devices = find_bluetooth_devices().expect("Failed to find bluetooth devices");
         let bluetooth_devices_info =
-            get_bluetooth_info(bluetooth_devices).expect("Failed to get bluetooth devices info");
+            get_bluetooth_info((&bluetooth_devices.0, &bluetooth_devices.1))
+                .expect("Failed to get bluetooth devices info");
 
         let (tray, tray_check_menus) =
             create_tray(&config, &bluetooth_devices_info).expect("Failed to create tray");
@@ -116,18 +117,16 @@ impl ApplicationHandler<UserEvent> for App {
             .lock()
             .unwrap()
             .get_id()
-        {
-            if let Some(bluetooth_info) = self
+            && let Some(bluetooth_info) = self
                 .bluetooth_info
                 .lock()
                 .unwrap()
                 .iter()
                 .find(|i| i.address == bluetooth_device_address)
-            {
-                if let Err(e) =  listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone())) {
-                    println!("Failed to listen {}: {e}", bluetooth_info.name)
-                }
-            }
+            && let Err(e) =
+                listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone()))
+        {
+            println!("Failed to listen {}: {e}", bluetooth_info.name)
         };
 
         listen_bluetooth_devices_info(config, proxy);
@@ -206,13 +205,14 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 };
 
-                let new_bt_info = match get_bluetooth_info(bluetooth_devices) {
-                    Ok(infos) => infos,
-                    Err(e) => {
-                        app_notify(format!("Failed to get bluetooth devices info - {e}"));
-                        return;
-                    }
-                };
+                let new_bt_info =
+                    match get_bluetooth_info((&bluetooth_devices.0, &bluetooth_devices.1)) {
+                        Ok(infos) => infos,
+                        Err(e) => {
+                            app_notify(format!("Failed to get bluetooth devices info - {e}"));
+                            return;
+                        }
+                    };
 
                 let config = Arc::clone(&self.config);
 
