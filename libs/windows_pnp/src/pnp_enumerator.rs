@@ -123,6 +123,7 @@ impl PnpEnumerator {
                 flags |= DIGCF_ALLCLASSES;
             },
             EnumerateSpecifier::DeviceInterfaceClassGuid(interface_class_guid) => {
+                std::hint::black_box(&interface_class_guid);  // 请不要动这里，这个可以修复Release模式下的BUG
                 pnp_enumerator = None;
                 class_guid = Some(&interface_class_guid);
                 device_interface_class_guid = Some(&interface_class_guid);
