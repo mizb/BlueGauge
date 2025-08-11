@@ -28,10 +28,9 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
     - Use custom pictures  
         1. create an `assets` folder in the BlueGauge directory
-        2. then add pictures  
             - Default：add `0.png` to `100.png`   
-            - Follow system theme：add `0_dark.png` to `100_dark.png`，`0_light.png` to `100_light.png`
-        3. restart BlueGauge  
+            - Follow system theme：In the `assets` folder, create the `dark` and `light` folders respectively, and add `0.png` to `100.png` photos respectively
+        2. restart BlueGauge  
 
 
 - [x] Setting：Auto start

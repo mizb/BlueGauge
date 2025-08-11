@@ -30,10 +30,9 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
     - 使用自定义图片  
         1. 在软件目录下创建一个 `assets` 文件夹，
-        2. 在 `assets`文件夹 中添加以下PNG图片
-            - 跟随系统主题：添加 `0_dark.png` 至 `100_dark.png`，添加 `0_light.png` 至 `100_light.png` 照片
-            - 不跟随系统主题：添加 `0.png` 至 `100.png` 照片  
-        3. 重新启动 BlueGauge
+            - 跟随系统主题：在 `assets` 文件夹中，分别创建 `dark` 和 `light` 文件夹，并分别添加 `0.png` 至 `100.png` 照片
+            - 不跟随系统主题：在 `assets` 文件夹中添加 `0.png` 至 `100.png` 照片  
+        2. 重新启动 BlueGauge
 
 - [x] 设置：开机自启动
 - [x] 设置：更新信息间隔时间
