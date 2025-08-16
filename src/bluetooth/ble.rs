@@ -118,3 +118,74 @@ pub fn get_ble_battery_level(ble_device: &BluetoothLEDevice) -> Result<u8> {
         )),
     }
 }
+
+// pub fn get_ble_battery_level_async(ble_device: &BluetoothLEDevice) -> Result<u8>  {
+//     // 0000180F-0000-1000-8000-00805F9B34FB
+//     let battery_services_uuid: GUID = GattServiceUuids::Battery()?;
+//     // 00002A19-0000-1000-8000-00805F9B34FB
+//     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
+
+//     let battery_gatt_services = ble_device
+//         .GetGattServicesForUuidAsync(battery_services_uuid)?
+//         .GetResults()?
+//         .Services()
+//         .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Services: {e}"))?;
+
+//     let battery_gatt_service = battery_gatt_services
+//         .into_iter()
+//         .next()
+//         .ok_or(anyhow!("Failed to get BLE Battery Gatt Service"))?; // 手机蓝牙无电量服务;
+
+//     let battery_gatt_chars = battery_gatt_service
+//         .GetCharacteristicsForUuidAsync(battery_level_uuid)?
+//         .get()?
+//         .Characteristics()
+//         .map_err(|e| anyhow!("Failed to get BLE Battery Gatt Characteristics: {e}"))?;
+
+//     let battery_gatt_char = battery_gatt_chars
+//         .into_iter()
+//         .next()
+//         .ok_or_else(|| anyhow!("Failed to get BLE Battery Gatt Characteristic"))?;
+
+//     if battery_gatt_char.Uuid()? != battery_level_uuid {
+//         return Err(anyhow!("Battery level characteristic not found"));
+//     }
+
+//     let properties = battery_gatt_char.CharacteristicProperties()?;
+
+//     if !properties.contains(GattCharacteristicProperties::Notify) {
+//         return Err(anyhow!("Battery level does not support notifications"))
+//     }
+
+//     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+
+//     let value_handler = TypedEventHandler::new(
+//         move |_: windows::core::Ref<GattCharacteristic>, args: windows::core::Ref<GattValueChangedEventArgs>| {
+//             if let Ok(args) = args.ok() {
+//                 let value = args.CharacteristicValue()?;
+//                 let reader = DataReader::FromBuffer(&value)?;
+//                 let battery = reader.ReadByte()?;
+//                 let _ = tx.try_send(battery);
+//             }
+//             Ok(())
+//         },
+//     );
+
+//     let token = battery_gatt_char.ValueChanged(&value_handler)?;
+
+//     let status = battery_gatt_char
+//         .WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::Notify)?
+//         .get()?;
+
+//     if status != GattCommunicationStatus::Success {
+//         battery_gatt_char.RemoveValueChanged(token)?;
+//         return Err(anyhow!("Failed to subscribe to notifications"));
+//     }
+
+//     while let Some(level) = rx.blocking_recv() {
+//         battery_gatt_char.RemoveValueChanged(token)?;
+//         return Ok(level);
+//     }
+
+//     Ok(())
+// }

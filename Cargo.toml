@@ -43,7 +43,14 @@ features = [
     "Win32_Devices_Bluetooth",
     "Devices_Bluetooth_Rfcomm",
     "Networking_Sockets",
+    "Win32_System_Registry",
+    "Win32_Security",
+    "Win32_System_Threading"
 ]
+
+[dev-dependencies.tokio]
+version = "1.47"
+features = ["full"]
 
 [build-dependencies]
 embed-resource = "3"
