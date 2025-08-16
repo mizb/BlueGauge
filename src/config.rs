@@ -41,10 +41,10 @@ struct NotifyOptionsToml {
 pub enum TrayIconSource {
     App,
     BatteryCustom {
-        id: String,
+        address: String,
     },
     BatteryFont {
-        id: String,
+        address: String,
         font_name: String,
         /// "FollowSystemTheme"(Default),
         /// "ConnectColor"(连接状态颜色)
@@ -57,29 +57,29 @@ pub enum TrayIconSource {
 }
 
 impl TrayIconSource {
-    pub fn get_id(&self) -> Option<String> {
+    pub fn get_address(&self) -> Option<String> {
         match self {
             Self::App => None,
-            Self::BatteryCustom { id } => Some(id.clone()),
-            Self::BatteryFont { id, .. } => Some(id.clone()),
+            Self::BatteryCustom { address } => Some(address.clone()),
+            Self::BatteryFont { address, .. } => Some(address.clone()),
         }
     }
 
-    pub fn update_id(&mut self, new_id: &str) {
+    pub fn update_address(&mut self, new_address: &str) {
         match self {
             Self::App => (),
-            Self::BatteryCustom { id } => *id = new_id.to_string(),
-            Self::BatteryFont { id, .. } => *id = new_id.to_string(),
+            Self::BatteryCustom { address } => *address = new_address.to_string(),
+            Self::BatteryFont { address, .. } => *address = new_address.to_string(),
         }
     }
 
     pub fn update_connect_color(&mut self, should_update: bool) {
         match self {
             Self::App => (),
-            Self::BatteryCustom { id } => {
+            Self::BatteryCustom { address } => {
                 if should_update {
                     *self = TrayIconSource::BatteryFont {
-                        id: id.to_owned(),
+                        address: address.to_owned(),
                         font_name: "Arial".to_owned(),
                         font_color: Some("FollowSystemTheme".to_owned()),
                         font_size: Some(64),
@@ -298,8 +298,12 @@ impl Config {
         } else {
             match toml_config.tray_options.tray_icon_source {
                 TrayIconSource::App => TrayIconSource::App,
-                TrayIconSource::BatteryCustom { id } => TrayIconSource::BatteryCustom { id },
-                TrayIconSource::BatteryFont { id, .. } => TrayIconSource::BatteryCustom { id },
+                TrayIconSource::BatteryCustom { address } => {
+                    TrayIconSource::BatteryCustom { address }
+                }
+                TrayIconSource::BatteryFont { address, .. } => {
+                    TrayIconSource::BatteryCustom { address }
+                }
             }
         };
 
@@ -377,7 +381,7 @@ impl Config {
         self.notify_options.removed.load(Ordering::Acquire)
     }
 
-    pub fn get_tray_battery_icon_bt_id(&self) -> Option<String> {
+    pub fn get_tray_battery_icon_bt_address(&self) -> Option<String> {
         let tray_icon_source = {
             let lock = self.tray_options.tray_icon_source.lock().unwrap();
             lock.clone()
@@ -385,8 +389,8 @@ impl Config {
 
         match tray_icon_source {
             TrayIconSource::App => None,
-            TrayIconSource::BatteryCustom { id } => Some(id),
-            TrayIconSource::BatteryFont { id, .. } => Some(id),
+            TrayIconSource::BatteryCustom { address } => Some(address),
+            TrayIconSource::BatteryFont { address, .. } => Some(address),
         }
     }
 }

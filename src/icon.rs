@@ -47,37 +47,36 @@ pub fn load_battery_icon(
 
     match tray_icon_source {
         TrayIconSource::App => default_icon(),
-        TrayIconSource::BatteryCustom { ref id } | TrayIconSource::BatteryFont { ref id, .. } => {
-            bluetooth_devices_info
-                .iter()
-                .find(|i| i.address == *id)
-                .map_or_else(
-                    || load_icon(UNPAIRED_ICON_DATA),
-                    |i| match tray_icon_source {
-                        TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
-                        TrayIconSource::BatteryFont {
-                            id: _,
-                            font_name,
+        TrayIconSource::BatteryCustom { ref address }
+        | TrayIconSource::BatteryFont { ref address, .. } => bluetooth_devices_info
+            .iter()
+            .find(|i| i.address == *address)
+            .map_or_else(
+                || load_icon(UNPAIRED_ICON_DATA),
+                |i| match tray_icon_source {
+                    TrayIconSource::BatteryCustom { .. } => get_icon_from_custom(i.battery),
+                    TrayIconSource::BatteryFont {
+                        address: _,
+                        font_name,
+                        font_color,
+                        font_size,
+                    } => {
+                        let should_icon_connect_color = font_color
+                            .as_ref()
+                            .is_some_and(|c| c.eq("ConnectColor"))
+                            .then_some(i.status);
+
+                        get_icon_from_font(
+                            i.battery,
+                            &font_name,
                             font_color,
                             font_size,
-                        } => {
-                            let should_icon_connect_color = font_color
-                                .as_ref()
-                                .is_some_and(|c| c.eq("ConnectColor"))
-                                .then_some(i.status);
-
-                            get_icon_from_font(
-                                i.battery,
-                                &font_name,
-                                font_color,
-                                font_size,
-                                should_icon_connect_color,
-                            )
-                        }
-                        _ => load_icon(UNPAIRED_ICON_DATA),
-                    },
-                )
-        }
+                            should_icon_connect_color,
+                        )
+                    }
+                    _ => load_icon(UNPAIRED_ICON_DATA),
+                },
+            ),
     }
 }
 
@@ -160,32 +159,23 @@ fn render_battery_font_icon(
     // Dynamically calculated font size
     let mut layout;
     let text = piet.text();
-    if let Some(size) = font_size {
-        layout = text
-            .new_text_layout(indicator.clone())
-            .font(FontFamily::new_unchecked(font_name), size)
-            .text_color(Color::from_hex_str(&font_color)?)
-            .build()
-            .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
-    } else {
-        let mut font_size = match battery_level {
-            100 => 42.0,
-            b if b < 10 => 70.0,
-            _ => 64.0,
-        };
-        loop {
-            layout = text
-                .new_text_layout(indicator.clone())
-                .font(FontFamily::new_unchecked(font_name), font_size)
-                .text_color(Color::from_hex_str(&font_color)?)
-                .build()
-                .map_err(|e| anyhow!("Failed to build text layout - {e}"))?;
 
-            if layout.size().width > width as f64 || layout.size().height > height as f64 {
-                break;
-            }
-            font_size += 2.0;
+    let mut fs = match (font_size, battery_level) {
+        (_, 100) => 42.0,
+        (Some(size), _) => size,
+        (None, b) if b < 10 => 70.0,
+        (None, _) => 64.0,
+    };
+
+    if battery_level == 100 || font_size.is_none() {
+        while {
+            layout = build_text_layout(text, &indicator, font_name, fs, &font_color)?;
+            !(layout.size().width > width as f64 || layout.size().height > height as f64)
+        } {
+            fs += 2.0;
         }
+    } else {
+        layout = build_text_layout(text, &indicator, font_name, fs, &font_color)?;
     }
 
     let (x, y) = (
@@ -206,14 +196,28 @@ fn render_battery_font_icon(
     ))
 }
 
+fn build_text_layout(
+    text: &mut piet_common::D2DText,
+    indicator: &str,
+    font_name: &str,
+    font_size: f64,
+    font_color: &str,
+) -> Result<piet_common::D2DTextLayout> {
+    text.new_text_layout(indicator.to_string())
+        .font(FontFamily::new_unchecked(font_name), font_size)
+        .text_color(Color::from_hex_str(font_color)?)
+        .build()
+        .map_err(|e| anyhow!("Failed to build text layout - {e}"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum SystemTheme {
+pub enum SystemTheme {
     Light,
     Dark,
 }
 
 impl SystemTheme {
-    fn get() -> Self {
+    pub fn get() -> Self {
         let personalize_reg_key = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey_with_flags(PERSONALIZE_REGISTRY_KEY, KEY_READ | KEY_WRITE)
             .expect("This program requires Windows 10 14393 or above");

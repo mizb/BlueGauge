@@ -277,11 +277,11 @@ impl MenuHandlers {
 
                 if have_custom_icons {
                     *original_tray_icon_source = TrayIconSource::BatteryCustom {
-                        id: show_battery_icon_bt_address.to_owned(),
+                        address: show_battery_icon_bt_address.to_owned(),
                     };
                 } else {
                     *original_tray_icon_source = TrayIconSource::BatteryFont {
-                        id: show_battery_icon_bt_address.to_owned(),
+                        address: show_battery_icon_bt_address.to_owned(),
                         font_name: "Arial".to_owned(),
                         font_color: Some("FollowSystemTheme".to_owned()),
                         font_size: Some(64)
@@ -296,7 +296,7 @@ impl MenuHandlers {
             TrayIconSource::BatteryCustom { .. }
             | TrayIconSource::BatteryFont { .. } => {
                 if new_bt_menu_is_checked {
-                    original_tray_icon_source.update_id(show_battery_icon_bt_address);
+                    original_tray_icon_source.update_address(show_battery_icon_bt_address);
                     if let Some(bluetooth_info) = bluetooth_devices_info.iter().find(|i| i.address == show_battery_icon_bt_address)
                         && let Err(e) =  listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy)) {
                             println!("Failed to listen {}: {e}", bluetooth_info.name)
