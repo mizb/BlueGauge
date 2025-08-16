@@ -306,15 +306,6 @@ fn process_le_device(
     }
 }
 
-// 提供获取当前状态的函数
-// pub fn get_current_bluetooth_info() -> Option<BluetoothInfo> {
-//     THREAD_STATE
-//         .get()
-//         .and_then(|mutex| mutex.lock().ok())
-//         .and_then(|guard| guard.current_bluetooth_info.clone())
-// }
-
-// 提供停止所有监控的函数
 pub fn stop_bluetooth_monitoring() -> Result<()> {
     if let Some(mutex) = THREAD_STATE.get() {
         let mut state = mutex.lock().unwrap();
