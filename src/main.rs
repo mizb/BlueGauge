@@ -17,13 +17,13 @@ use crate::bluetooth::info::{
 };
 use crate::bluetooth::listen::{listen_bluetooth_device_info, listen_bluetooth_devices_info};
 use crate::config::*;
-use crate::icon::load_battery_icon;
+use crate::icon::{SystemTheme, load_battery_icon};
 use crate::menu_handlers::MenuHandlers;
 use crate::notify::app_notify;
 use crate::tray::{convert_tray_info, create_menu, create_tray};
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use tray_icon::{
     TrayIcon,
@@ -65,6 +65,7 @@ struct App {
     event_loop_proxy: Option<EventLoopProxy<UserEvent>>,
     /// 存储已经通知过的低电量设备，避免再次通知
     notified_low_battery: Arc<Mutex<HashSet<String>>>,
+    system_theme: Arc<RwLock<SystemTheme>>,
     tray: Mutex<Option<TrayIcon>>,
     tray_check_menus: Mutex<Option<Vec<CheckMenuItem>>>,
 }
@@ -86,6 +87,7 @@ impl Default for App {
             config: Arc::new(config),
             event_loop_proxy: None,
             notified_low_battery: Arc::new(Mutex::new(HashSet::new())),
+            system_theme: Arc::new(RwLock::new(SystemTheme::get())),
             tray: Mutex::new(Some(tray)),
             tray_check_menus: Mutex::new(Some(tray_check_menus)),
         }
@@ -116,7 +118,7 @@ impl ApplicationHandler<UserEvent> for App {
             .tray_icon_source
             .lock()
             .unwrap()
-            .get_id()
+            .get_address()
             && let Some(bluetooth_info) = self
                 .bluetooth_info
                 .lock()
@@ -129,7 +131,30 @@ impl ApplicationHandler<UserEvent> for App {
             println!("Failed to listen {}: {e}", bluetooth_info.name)
         };
 
-        listen_bluetooth_devices_info(config, proxy);
+        listen_bluetooth_devices_info(config.clone(), proxy.clone());
+
+        let system_theme = Arc::clone(&self.system_theme);
+        std::thread::spawn(move || {
+            loop {
+                let original_system_theme = {
+                    let system_theme = system_theme.read().unwrap();
+                    *system_theme
+                };
+
+                let current_system_theme = SystemTheme::get();
+
+                if original_system_theme != current_system_theme {
+                    let mut system_theme = system_theme.write().unwrap();
+                    *system_theme = current_system_theme;
+
+                    proxy
+                        .send_event(UserEvent::UpdateTray(true))
+                        .expect("Failed to send UpdateTray Event");
+                }
+
+                std::thread::sleep(std::time::Duration::from_secs(5));
+            }
+        });
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
