@@ -35,16 +35,42 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
         2. 重新启动 BlueGauge
 
 - [x] 设置：开机自启动
-- [x] 设置：更新信息间隔时间
-- [x] 设置-提示：显示未连接的设备
-- [x] 设置-提示：限制设备名称长度
-- [x] 设置-提示：更改设备电量位置
-- [x] 设置-通知：静音通知
-- [x] 设置-通知：低电量时通知
-- [x] 设置-通知：重新连接时通知
-- [x] 设置-通知：断开连接时通知
-- [x] 设置-通知：添加设备时通知
-- [x] 设置-通知：移除设备时通知
+- [x] 设置：更新信息间隔时间    
+
+    默认60s更新一次所有设备信息    
+
+- [x] 设置：蓝牙设备名称别名
+
+    1. 打开托盘菜单-`设置`-`打开配置`   
+
+    2. 在`[device_aliases]`下方添加需要的蓝牙设备别名（注意使用英文引号包裹名称）
+
+        - 例如 `"蓝牙设备名称" = "蓝牙别名"`
+        - 例如 `"WH-1000XM6" = "Sony Headphones"`
+        - 例如 `"HUAWEI FreeBuds Pro" = "FreeBuds Pro"`
+        - 例如 `"OPPO Enco Air3" = "Enco Air3"`
+
+        <div align="center">
+            <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
+                <img src="screenshots/not_aliases.png" alt="左下图片" style="width:45%; display:block;">
+                <img src="screenshots/aliases.png" alt="右下图片" style="width:45%; display:block;">
+            </div>
+        </div>
+
+- [x] 设置：托盘提示
+
+    - 显示未连接的设备
+    - 限制设备名称长度
+    - 更改设备电量位置
+
+- [x] 设置：通知
+
+    - 静音通知
+    - 低电量时通知
+    - 重新连接时通知
+    - 断开连接时通知
+    - 添加设备时通知
+    - 移除设备时通知
 
 ## 已知问题与建议
 

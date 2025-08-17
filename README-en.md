@@ -35,15 +35,38 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
 - [x] Setting：Auto start
 - [x] Setting：Update interval
-- [x] Setting-tooltip：Shows unconnected devices
-- [x] Setting-tooltip：Truncate devices Name
-- [x] Setting-tooltip：Changing the device power location
-- [x] Setting-notice：Mute notice
-- [x] Setting-notice：Low battery notice
-- [x] Setting-notice：Notification when reconnecting the device
-- [x] Setting-notice：Notification when disconnecting the device
-- [x] Setting-notice：Notification when adding a new device
-- [x] Setting-notice：Notification when moving a new device
+- [x] Setting：Bluetooth device name aliases
+
+    1. open tray menu -- `Settings` -- `Open Config`   
+
+    2. Add the required Bluetooth device alias under `[device_aliases]` (note that you use quotation marks to wrap the name)
+
+        - e.g. `"Bluetooth device name" = "Bluetooth alias"`
+        - e.g. `"WH-1000XM6" = "Sony Headphones"`
+        - e.g. `"Surface Pen" = "Pen"`
+        - e.g. `"HUAWEI FreeBuds Pro" = "FreeBuds Pro"`
+        - e.g. `"OPPO Enco Air3" = "Enco Air3"`
+
+        <div align="center">
+            <div style="display:flex; justify-content:space-between; width:100%; margin:0 auto;">
+                <img src="screenshots/not_aliases.png" alt="左下图片" style="width:45%; display:block;">
+                <img src="screenshots/aliases.png" alt="右下图片" style="width:45%; display:block;">
+            </div>
+        </div>
+
+- [x] Setting: tooltip
+
+    - Shows unconnected devices
+    - Truncate devices Name
+    - Changing the device power location
+
+- [x] Setting: notice
+    - Mute notice
+    - Low battery notice
+    - Notification when reconnecting the device
+    - Notification when disconnecting the device
+    - Notification when adding a new device
+    - Notification when moving a new device
 
 ## Known Issues & Suggested Solutions
 

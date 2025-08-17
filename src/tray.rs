@@ -30,7 +30,7 @@ impl CreateMenuItem {
             Some(text),
             Some(AboutMetadata {
                 name: Some("BlueGauge".to_owned()),
-                version: Some("0.2.6".to_owned()),
+                version: Some("0.2.7".to_owned()),
                 authors: Some(vec!["iKineticate".to_owned()]),
                 website: Some("https://github.com/iKineticate/BlueGauge".to_owned()),
                 ..Default::default()
@@ -58,15 +58,15 @@ impl CreateMenuItem {
         tray_check_menus: &mut Vec<CheckMenuItem>,
         bluetooth_devices_info: &HashSet<BluetoothInfo>,
     ) -> Result<Vec<CheckMenuItem>> {
-        let show_tray_battery_icon_bt_id = config.get_tray_battery_icon_bt_address();
+        let show_tray_battery_icon_bt_address = config.get_tray_battery_icon_bt_address();
         let bluetooth_check_items: Vec<CheckMenuItem> = bluetooth_devices_info
             .iter()
             .map(|info| {
                 CheckMenuItem::with_id(
                     &info.address,
-                    &info.name,
+                    config.get_device_aliases_name(&info.name),
                     true,
-                    show_tray_battery_icon_bt_id
+                    show_tray_battery_icon_bt_address
                         .as_deref()
                         .is_some_and(|id| id.eq(&info.address)),
                     None,
@@ -336,13 +336,16 @@ pub fn convert_tray_info(
             let include_in_tooltip = blue_info.status || should_show_disconnected;
 
             if include_in_tooltip {
-                let name = truncate_with_ellipsis(should_truncate_name, &blue_info.name, 10);
+                let name = {
+                    let name = config.get_device_aliases_name(&blue_info.name);
+                    truncate_with_ellipsis(should_truncate_name, name, 10)
+                };
                 let battery = blue_info.battery;
                 let status_icon = if blue_info.status { "🟢" } else { "🔴" };
                 let info = if should_prefix_battery {
                     format!("{status_icon}{battery:3}% - {name}")
                 } else {
-                    format!("{status_icon}{name} - {battery:3}%")
+                    format!("{status_icon}{name} - {battery}%")
                 };
                 Some(info)
             } else {
@@ -352,7 +355,7 @@ pub fn convert_tray_info(
         .collect()
 }
 
-fn truncate_with_ellipsis(truncate_device_name: bool, name: &str, max_chars: usize) -> String {
+fn truncate_with_ellipsis(truncate_device_name: bool, name: String, max_chars: usize) -> String {
     if truncate_device_name && name.chars().count() > max_chars {
         let mut result = name.chars().take(max_chars).collect::<String>();
         result.push_str("...");
