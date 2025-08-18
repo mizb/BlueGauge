@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use windows::{
     Devices::{
         Bluetooth::{
-            BluetoothLEDevice,
+            BluetoothConnectionStatus, BluetoothLEDevice,
             GenericAttributeProfile::{
                 GattCharacteristic, GattCharacteristicProperties, GattCharacteristicUuids,
                 GattClientCharacteristicConfigurationDescriptorValue, GattCommunicationStatus,
@@ -19,16 +19,20 @@ use windows::{
     core::{GUID, HSTRING, Ref},
 };
 
+#[derive(Debug)]
+pub enum BluetoothLEDeviceUpdate {
+    BatteryLevel(u8),
+    ConnectionStatus(bool),
+}
+
 #[tokio::test]
-async fn watch_ble_battery() -> Result<()> {
+async fn watch_ble_device() -> Result<()> {
     let ble_device = BluetoothLEDevice::FromBluetoothAddressAsync(242976932086723)?.get()?;
 
     // 0000180F-0000-1000-8000-00805F9B34FB
     let battery_services_uuid: GUID = GattServiceUuids::Battery()?;
     // 00002A19-0000-1000-8000-00805F9B34FB
     let battery_level_uuid: GUID = GattCharacteristicUuids::BatteryLevel()?;
-
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
 
     let battery_gatt_services = ble_device
         .GetGattServicesForUuidAsync(battery_services_uuid)?
@@ -62,19 +66,44 @@ async fn watch_ble_battery() -> Result<()> {
         return Err(anyhow!("Battery level does not support notifications"));
     }
 
-    let value_handler = TypedEventHandler::new(
-        move |_: Ref<GattCharacteristic>, args: Ref<GattValueChangedEventArgs>| {
-            if let Ok(args) = args.ok() {
-                let value = args.CharacteristicValue()?;
-                let reader = DataReader::FromBuffer(&value)?;
-                let battery = reader.ReadByte()?;
-                let _ = tx.try_send(battery);
-            }
-            Ok(())
-        },
-    );
+    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
 
-    let token = battery_gatt_char.ValueChanged(&value_handler)?;
+    let tx_status = tx.clone();
+    let connection_status_token = {
+        let handler = TypedEventHandler::new(
+            move |sender: windows::core::Ref<BluetoothLEDevice>, _args| {
+                if let Some(ble) = sender.as_ref() {
+                    let status = ble.ConnectionStatus()? == BluetoothConnectionStatus::Connected;
+                    let _ = tx_status.try_send(BluetoothLEDeviceUpdate::ConnectionStatus(status));
+                }
+                Ok(())
+            },
+        );
+        ble_device.ConnectionStatusChanged(&handler)?
+    };
+
+    let tx_battery = tx.clone();
+    let battery_token = {
+        let handler = TypedEventHandler::new(
+            move |_: windows::core::Ref<GattCharacteristic>,
+                  args: windows::core::Ref<GattValueChangedEventArgs>| {
+                if let Ok(args) = args.ok() {
+                    let value = args.CharacteristicValue()?;
+                    let reader = DataReader::FromBuffer(&value)?;
+                    let battery = reader.ReadByte()?;
+                    let _ = tx_battery.try_send(BluetoothLEDeviceUpdate::BatteryLevel(battery));
+                }
+                Ok(())
+            },
+        );
+        battery_gatt_char.ValueChanged(&handler)?
+    };
+
+    use scopeguard::defer;
+    defer! {
+        let _ = ble_device.RemoveConnectionStatusChanged(connection_status_token);
+        let _ = battery_gatt_char.RemoveValueChanged(battery_token);
+    }
 
     let status = battery_gatt_char
         .WriteClientCharacteristicConfigurationDescriptorAsync(
@@ -83,13 +112,12 @@ async fn watch_ble_battery() -> Result<()> {
         .get()?;
 
     if status != GattCommunicationStatus::Success {
-        battery_gatt_char.RemoveValueChanged(token)?;
-        return Err(anyhow!("Failed to subscribe to notifications"));
+        println!("Failed to subscribe to notifications");
     }
 
-    // 使用while let可能一直阻塞无消息返回
-    if let Some(level) = rx.recv().await {
-        println!("Received battery level notification: {}%", level);
+    if let Some(test) = rx.recv().await {
+        println!("{test:?}");
+        return Ok(());
     }
 
     Ok(())

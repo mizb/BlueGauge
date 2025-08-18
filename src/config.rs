@@ -258,7 +258,8 @@ impl Config {
     }
 
     fn create_toml(config_path: PathBuf) -> Result<Self> {
-        let device_aliases = HashMap::from([("e.g. WH-1000XM6".to_owned(), "Sony Headphones".to_owned())]);
+        let device_aliases =
+            HashMap::from([("e.g. WH-1000XM6".to_owned(), "Sony Headphones".to_owned())]);
 
         let default_config = ConfigToml {
             tray_options: TrayOptionsToml {
@@ -294,8 +295,12 @@ impl Config {
                     show_disconnected: AtomicBool::new(
                         default_config.tray_options.tray_tooltip.show_disconnected,
                     ),
-                    truncate_name: AtomicBool::new(default_config.tray_options.tray_tooltip.truncate_name),
-                    prefix_battery: AtomicBool::new(default_config.tray_options.tray_tooltip.prefix_battery),
+                    truncate_name: AtomicBool::new(
+                        default_config.tray_options.tray_tooltip.truncate_name,
+                    ),
+                    prefix_battery: AtomicBool::new(
+                        default_config.tray_options.tray_tooltip.prefix_battery,
+                    ),
                 },
             },
             notify_options: NotifyOptions {
@@ -334,9 +339,15 @@ impl Config {
                 update_interval: AtomicU64::new(toml_config.tray_options.update_interval),
                 tray_icon_source: Mutex::new(tray_icon_source),
                 tooltip_options: TooltipOptions {
-                    show_disconnected: AtomicBool::new(toml_config.tray_options.tray_tooltip.show_disconnected),
-                    truncate_name: AtomicBool::new(toml_config.tray_options.tray_tooltip.truncate_name),
-                    prefix_battery: AtomicBool::new(toml_config.tray_options.tray_tooltip.prefix_battery),
+                    show_disconnected: AtomicBool::new(
+                        toml_config.tray_options.tray_tooltip.show_disconnected,
+                    ),
+                    truncate_name: AtomicBool::new(
+                        toml_config.tray_options.tray_tooltip.truncate_name,
+                    ),
+                    prefix_battery: AtomicBool::new(
+                        toml_config.tray_options.tray_tooltip.prefix_battery,
+                    ),
                 },
             },
             notify_options: NotifyOptions {
@@ -354,7 +365,10 @@ impl Config {
 
 impl Config {
     pub fn get_device_aliases_name(&self, device_name: &String) -> String {
-        self.device_aliases.get(device_name).unwrap_or(device_name).to_owned()
+        self.device_aliases
+            .get(device_name)
+            .unwrap_or(device_name)
+            .to_owned()
     }
 
     pub fn get_update_interval(&self) -> u64 {

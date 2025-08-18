@@ -1,7 +1,7 @@
 use crate::{
     UserEvent,
     bluetooth::{
-        ble::{find_ble_device, process_ble_device},
+        ble::{BluetoothLEDeviceUpdate, find_ble_device, watch_ble_device},
         btc::{find_btc_device, get_pnp_device_info},
         info::{BluetoothInfo, BluetoothType},
     },
@@ -131,7 +131,7 @@ pub fn listen_bluetooth_device_info(
         // 创建新线程
         let handle = std::thread::spawn(move || {
             println!(
-                "Bluetooth monitoring thread started for device: {}",
+                "[{}] Bluetooth monitoring thread started",
                 thread_bluetooth_device.name
             );
 
@@ -165,19 +165,28 @@ pub fn listen_bluetooth_device_info(
                 };
 
                 // 如果处理成功并返回了更新的信息，则更新全局状态
-                if let Ok(Some(new_info)) = processing_result {
-                    println!(
-                        "Updating device info: {} - Status: {}, Battery: {}",
-                        new_info.name, new_info.status, new_info.battery
-                    );
-                    current_device_info = new_info.clone();
+                match processing_result {
+                    Ok(Some(new_info)) => {
+                        println!(
+                            "[{}] Updating device info: Status: {}, Battery: {}",
+                            new_info.name, new_info.status, new_info.battery
+                        );
+                        current_device_info = new_info.clone();
 
-                    if let Some(mutex) = THREAD_STATE.get()
-                        && let Ok(mut state) = mutex.lock()
-                    {
-                        state.current_bluetooth_info = Some(new_info);
+                        if let Some(mutex) = THREAD_STATE.get()
+                            && let Ok(mut state) = mutex.lock()
+                        {
+                            state.current_bluetooth_info = Some(new_info);
+                        }
                     }
+                    Err(e) => println!("{e}"),
+                    _ => (),
                 }
+
+                // 对于 LE 设备，不需要睡眠循环，因为 watch_ble_device 会持续监听
+                if let BluetoothType::LowEnergy(_) = current_device_info.r#type {
+                    continue;
+                };
 
                 // 根据设备状态确定总间隔时间（秒）
                 let total_interval_secs = match current_device_info.status {
@@ -200,7 +209,7 @@ pub fn listen_bluetooth_device_info(
             }
 
             println!(
-                "Bluetooth monitoring thread exited for device: {}",
+                "[{}] Bluetooth monitoring thread exited",
                 thread_bluetooth_device.name
             );
         });
@@ -228,7 +237,7 @@ fn process_classic_device(
     thread_bluetooth_device: &BluetoothInfo,
     proxy: &Option<EventLoopProxy<UserEvent>>,
     exit_flag: &Arc<AtomicBool>,
-) -> Result<Option<BluetoothInfo>, Box<dyn std::error::Error>> {
+) -> Result<Option<BluetoothInfo>> {
     if exit_flag.load(Ordering::Relaxed) {
         return Ok(None);
     }
@@ -262,13 +271,13 @@ fn process_classic_device(
         if let Some(proxy) = proxy {
             proxy
                 .send_event(UserEvent::UpdateTrayForBluetooth(current_blc_info.clone()))
-                .map_err(|_| "Failed to send UpdateTrayForBluetooth Event")?;
+                .map_err(|e| anyhow!("Failed to send UpdateTrayForBluetooth Event - {e}"))?;
         }
 
         Ok(Some(current_blc_info))
     } else {
         println!(
-            "No need to update current Bluetooth device - {}",
+            "[{}] No need to update current Bluetooth device",
             thread_bluetooth_device.name
         );
         Ok(None)
@@ -280,29 +289,45 @@ fn process_le_device(
     thread_bluetooth_device: &BluetoothInfo,
     proxy: &Option<EventLoopProxy<UserEvent>>,
     exit_flag: &Arc<AtomicBool>,
-) -> Result<Option<BluetoothInfo>, Box<dyn std::error::Error>> {
+) -> Result<Option<BluetoothInfo>> {
     if exit_flag.load(Ordering::Relaxed) {
         return Ok(None);
     }
 
     let ble_device = find_ble_device(address)?;
-    let current_ble_info = process_ble_device(&ble_device)
-        .map_err(|e| format!("Failed to get {} info: {}", thread_bluetooth_device.name, e))?;
 
-    if current_ble_info != *thread_bluetooth_device {
-        if let Some(proxy) = proxy {
-            proxy
-                .send_event(UserEvent::UpdateTrayForBluetooth(current_ble_info.clone()))
-                .map_err(|_| "Failed to send UpdateTrayForBluetooth Event")?;
+    let device_update = tokio::runtime::Runtime::new()
+        .expect("Failed to create runtime")
+        .block_on(watch_ble_device(ble_device, exit_flag));
+
+    match device_update {
+        Ok(update) => {
+            let thread_bluetooth_device = thread_bluetooth_device.clone();
+            // 处理更新
+            let updated_info = match update {
+                BluetoothLEDeviceUpdate::BatteryLevel(battery) => BluetoothInfo {
+                    name: thread_bluetooth_device.name,
+                    battery,
+                    status: thread_bluetooth_device.status,
+                    address: thread_bluetooth_device.address,
+                    r#type: thread_bluetooth_device.r#type,
+                },
+                BluetoothLEDeviceUpdate::ConnectionStatus(status) => BluetoothInfo {
+                    name: thread_bluetooth_device.name,
+                    battery: thread_bluetooth_device.battery,
+                    status,
+                    address: thread_bluetooth_device.address,
+                    r#type: thread_bluetooth_device.r#type,
+                },
+            };
+            // 发送更新事件
+            if let Some(proxy) = proxy {
+                proxy.send_event(UserEvent::UpdateTrayForBluetooth(updated_info.clone()))?;
+            }
+
+            Ok(Some(updated_info))
         }
-
-        Ok(Some(current_ble_info))
-    } else {
-        println!(
-            "No need to update current Bluetooth device - {}",
-            thread_bluetooth_device.name
-        );
-        Ok(None)
+        Err(e) => Err(anyhow!("BLE channel closed - {e}")),
     }
 }
 

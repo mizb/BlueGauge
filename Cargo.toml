@@ -8,14 +8,16 @@ repository = "https://github.com/iKineticate/BlueGauge"
 [dependencies]
 anyhow = "1"
 image = "0.25"
+piet-common = "0.7.0"
 serde= { version = "1.0", features = ["derive"] }
-toml = "0.9"
-windows_pnp = { path = "libs/windows_pnp" }
+scopeguard = "1.2.0"
 tauri-winrt-notification = "0.7"
+tokio = { version = "1.47", features = ["full"]}
+toml = "0.9"
 tray-icon = "0.21"
+windows_pnp = { path = "libs/windows_pnp" }
 winit = "0.30"
 winreg = "0.55"
-piet-common = "0.7.0"
 
 [dependencies.windows]
 version = "0.61"
@@ -47,10 +49,6 @@ features = [
     "Win32_Security",
     "Win32_System_Threading"
 ]
-
-[dev-dependencies.tokio]
-version = "1.47"
-features = ["full"]
 
 [build-dependencies]
 embed-resource = "3"
