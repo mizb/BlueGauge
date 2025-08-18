@@ -41,10 +41,10 @@ struct TrayTooltipToml {
 pub enum TrayIconSource {
     App,
     BatteryCustom {
-        address: String,
+        address: u64,
     },
     BatteryFont {
-        address: String,
+        address: u64,
         font_name: String,
         /// "FollowSystemTheme"(Default),
         /// "ConnectColor"(连接状态颜色)
@@ -67,19 +67,23 @@ struct NotifyOptionsToml {
 }
 
 impl TrayIconSource {
-    pub fn get_address(&self) -> Option<String> {
+    pub fn update_address(&mut self, new_address: u64) {
         match self {
-            Self::App => None,
-            Self::BatteryCustom { address } => Some(address.clone()),
-            Self::BatteryFont { address, .. } => Some(address.clone()),
+            Self::App => (),   
+            Self::BatteryCustom { address } => {
+                *address = new_address;
+            }
+            Self::BatteryFont { address, .. } => {
+                *address = new_address;
+            }
         }
     }
 
-    pub fn update_address(&mut self, new_address: &str) {
+    pub fn get_address(&self) -> Option<u64> {
         match self {
-            Self::App => (),
-            Self::BatteryCustom { address } => *address = new_address.to_string(),
-            Self::BatteryFont { address, .. } => *address = new_address.to_string(),
+            Self::App => None,
+            Self::BatteryCustom { address } => Some(*address),
+            Self::BatteryFont { address, .. } => Some(*address),
         }
     }
 
@@ -420,7 +424,7 @@ impl Config {
         self.notify_options.removed.load(Ordering::Acquire)
     }
 
-    pub fn get_tray_battery_icon_bt_address(&self) -> Option<String> {
+    pub fn get_tray_battery_icon_bt_address(&self) -> Option<u64> {
         let tray_icon_source = {
             let lock = self.tray_options.tray_icon_source.lock().unwrap();
             lock.clone()

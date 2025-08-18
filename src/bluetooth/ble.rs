@@ -2,7 +2,7 @@ use crate::bluetooth::info::{BluetoothInfo, BluetoothType};
 
 use std::{
     collections::HashSet,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use anyhow::{Context, Result, anyhow};
@@ -73,15 +73,14 @@ pub fn process_ble_device(ble_device: &BluetoothLEDevice) -> Result<BluetoothInf
         .map(|status| status == BluetoothConnectionStatus::Connected)
         .with_context(|| format!("Failed to get BLE connected status: {name}"))?;
 
-    let address_u64 = ble_device.BluetoothAddress()?;
-    let address_string = format!("{address_u64:012X}");
+    let address = ble_device.BluetoothAddress()?;
 
     Ok(BluetoothInfo {
         name,
         battery,
         status,
-        address: address_string,
-        r#type: BluetoothType::LowEnergy(address_u64),
+        address,
+        r#type: BluetoothType::LowEnergy,
     })
 }
 

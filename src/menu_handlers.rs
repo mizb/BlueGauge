@@ -243,7 +243,7 @@ impl MenuHandlers {
             "show_disconnected", "truncate_name", "prefix_battery",
         ];
 
-        let show_battery_icon_bt_address = menu_event_id;
+        let show_battery_icon_bt_address = menu_event_id.parse::<u64>().expect("Menu Event Id");
 
         // 只处理显示蓝牙电量图标相关的菜单项
         let bluetooth_menus: Vec<_> = tray_check_menus
@@ -252,12 +252,12 @@ impl MenuHandlers {
             .collect();
 
         let new_bt_menu_is_checked = bluetooth_menus.iter().any(|item| {
-            item.id().as_ref() == show_battery_icon_bt_address && item.is_checked()
+            item.id().as_ref() == menu_event_id && item.is_checked()
         });
 
         bluetooth_menus.iter().for_each(|item| {
             let should_check =
-                item.id().as_ref() == show_battery_icon_bt_address && new_bt_menu_is_checked;
+                item.id().as_ref() == menu_event_id && new_bt_menu_is_checked;
             item.set_checked(should_check);
         });
 

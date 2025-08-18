@@ -23,6 +23,7 @@ use crate::notify::app_notify;
 use crate::tray::{convert_tray_info, create_menu, create_tray};
 
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
 use tray_icon::{
@@ -64,7 +65,7 @@ struct App {
     config: Arc<Config>,
     event_loop_proxy: Option<EventLoopProxy<UserEvent>>,
     /// 存储已经通知过的低电量设备，避免再次通知
-    notified_low_battery: Arc<Mutex<HashSet<String>>>,
+    notified_low_battery_devices: Arc<Mutex<HashSet<u64>>>,
     system_theme: Arc<RwLock<SystemTheme>>,
     tray: Mutex<Option<TrayIcon>>,
     tray_check_menus: Mutex<Option<Vec<CheckMenuItem>>>,
@@ -86,7 +87,7 @@ impl Default for App {
             bluetooth_info: Arc::new(Mutex::new(bluetooth_devices_info)),
             config: Arc::new(config),
             event_loop_proxy: None,
-            notified_low_battery: Arc::new(Mutex::new(HashSet::new())),
+            notified_low_battery_devices: Arc::new(Mutex::new(HashSet::new())),
             system_theme: Arc::new(RwLock::new(SystemTheme::get())),
             tray: Mutex::new(Some(tray)),
             tray_check_menus: Mutex::new(Some(tray_check_menus)),
@@ -118,7 +119,9 @@ impl ApplicationHandler<UserEvent> for App {
             .tray_icon_source
             .lock()
             .unwrap()
+            .deref()
             .get_address()
+
             && let Some(bluetooth_info) = self
                 .bluetooth_info
                 .lock()
@@ -243,7 +246,7 @@ impl ApplicationHandler<UserEvent> for App {
 
                 if let Some(e) = compare_bt_info_to_send_notifications(
                     &config,
-                    Arc::clone(&self.notified_low_battery),
+                    Arc::clone(&self.notified_low_battery_devices),
                     Arc::clone(&self.bluetooth_info),
                     &new_bt_info,
                 ) {
@@ -282,7 +285,9 @@ impl ApplicationHandler<UserEvent> for App {
                     "Need to update the info immediately: {}",
                     bluetooth_info.name
                 );
-                let current_bt_info = {
+                let update_bt_info_address = bluetooth_info.address.clone();
+
+                let current_bt_infos = {
                     let mut original_bt_info = self.bluetooth_info.lock().unwrap();
                     original_bt_info.retain(|i| i.address != bluetooth_info.address);
                     original_bt_info.insert(bluetooth_info);
@@ -291,7 +296,7 @@ impl ApplicationHandler<UserEvent> for App {
 
                 let config = Arc::clone(&self.config);
 
-                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &current_bt_info)
+                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &current_bt_infos)
                 {
                     Ok(menu) => menu,
                     Err(e) => {
@@ -301,13 +306,23 @@ impl ApplicationHandler<UserEvent> for App {
                 };
 
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
-                    let icon = load_battery_icon(&config, &current_bt_info)
-                        .expect("Failed to load battery icon");
-                    let bluetooth_tooltip_info = convert_tray_info(&current_bt_info, &config);
+                    let bluetooth_tooltip_info = convert_tray_info(&current_bt_infos, &config);
                     tray.set_menu(Some(Box::new(tray_menu)));
                     tray.set_tooltip(Some(bluetooth_tooltip_info.join("\n")))
                         .expect("Failed to update tray tooltip");
-                    tray.set_icon(Some(icon)).expect("Failed to set tray icon");
+
+                    let tray_icon_bt_address = {
+                        self.config.tray_options.tray_icon_source.lock().unwrap().get_address()
+                    };
+
+                    if let Some(tray_icon_bt_address) = tray_icon_bt_address {
+                        if tray_icon_bt_address == update_bt_info_address {
+                            let icon = load_battery_icon(&config, &current_bt_infos)
+                                .expect("Failed to load battery icon");
+                            tray.set_icon(Some(icon)).expect("Failed to set tray icon");
+                        }
+                    }
+
                 }
 
                 if let Some(tray_check_menus) = self.tray_check_menus.lock().unwrap().as_mut() {

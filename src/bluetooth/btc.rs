@@ -23,7 +23,7 @@ const DEVPKEY_Bluetooth_Battery: DEVPROPKEY = DEVPROPKEY {
 const BT_INSTANCE_ID: &str = "BTHENUM\\";
 
 pub struct PnpDeviceInfo {
-    pub address: String,
+    pub address: u64,
     pub battery: u8,
     pub instance_id: String,
 }
@@ -92,15 +92,14 @@ pub fn get_btc_info(btc_devices: &[BluetoothDevice]) -> Result<HashSet<Bluetooth
 
 pub fn process_btc_device(
     btc_device: &BluetoothDevice,
-    pnp_devices_info: &HashMap<String, PnpDeviceInfo>,
+    pnp_devices_info: &HashMap<u64, PnpDeviceInfo>,
 ) -> Result<BluetoothInfo> {
     let btc_name = btc_device.Name()?.to_string().trim().to_owned();
 
-    let btc_address_u64 = btc_device.BluetoothAddress()?;
-    let btc_address_mac = format!("{btc_address_u64:012X}");
+    let btc_address = btc_device.BluetoothAddress()?;
 
     let (pnp_instance_id, btc_battery) = pnp_devices_info
-        .get(&btc_address_mac)
+        .get(&btc_address)
         .map(|i| (i.instance_id.clone(), i.battery))
         .ok_or_else(|| anyhow!("No matching Bluetooth Classic Device in Pnp device: {btc_name}"))?;
 
@@ -110,13 +109,13 @@ pub fn process_btc_device(
         name: btc_name,
         battery: btc_battery,
         status: btc_status,
-        address: btc_address_mac,
-        r#type: BluetoothType::Classic(pnp_instance_id, btc_address_u64),
+        address: btc_address,
+        r#type: BluetoothType::Classic(pnp_instance_id),
     })
 }
 
-fn get_pnp_devices_info() -> Result<HashMap<String, PnpDeviceInfo>> {
-    let mut pnp_devices_info: HashMap<String, PnpDeviceInfo> = HashMap::new();
+fn get_pnp_devices_info() -> Result<HashMap<u64, PnpDeviceInfo>> {
+    let mut pnp_devices_info: HashMap<u64, PnpDeviceInfo> = HashMap::new();
 
     let bt_devices_info = get_pnp_bt_devices()?;
 
@@ -132,7 +131,7 @@ fn get_pnp_devices_info() -> Result<HashMap<String, PnpDeviceInfo>> {
             let address = props
                 .remove(&DEVPKEY_Bluetooth_DeviceAddress.into())
                 .and_then(|value| match value {
-                    PnpDevicePropertyValue::String(v) => Some(v),
+                    PnpDevicePropertyValue::String(v) => u64::from_str_radix(&v, 16).ok(),
                     _ => None,
                 });
 
@@ -167,7 +166,7 @@ pub fn get_pnp_device_info(device_instance_id: &str) -> Result<PnpDeviceInfo> {
         let address = props
             .remove(&DEVPKEY_Bluetooth_DeviceAddress.into())
             .and_then(|value| match value {
-                PnpDevicePropertyValue::String(v) => Some(v),
+                PnpDevicePropertyValue::String(v) => u64::from_str_radix(&v, 16).ok(),
                 _ => None,
             });
 

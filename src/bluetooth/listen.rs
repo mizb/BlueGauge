@@ -149,15 +149,15 @@ pub fn listen_bluetooth_device_info(
                 }
 
                 let processing_result = match current_device_info.r#type {
-                    BluetoothType::Classic(ref instance_id, address) => process_classic_device(
+                    BluetoothType::Classic(ref instance_id) => process_classic_device(
                         instance_id,
-                        address,
+                        current_device_info.address,
                         &current_device_info,
                         &thread_proxy,
                         &thread_exit_flag,
                     ),
-                    BluetoothType::LowEnergy(address) => process_le_device(
-                        address,
+                    BluetoothType::LowEnergy => process_le_device(
+                        current_device_info.address,
                         &current_device_info,
                         &thread_proxy,
                         &thread_exit_flag,
@@ -184,7 +184,7 @@ pub fn listen_bluetooth_device_info(
                 }
 
                 // 对于 LE 设备，不需要睡眠循环，因为 watch_ble_device 会持续监听
-                if let BluetoothType::LowEnergy(_) = current_device_info.r#type {
+                if let BluetoothType::LowEnergy = current_device_info.r#type {
                     continue;
                 };
 
@@ -247,16 +247,15 @@ fn process_classic_device(
     let pnp_device_battery = pnp_device_info.battery;
 
     let btc_device = find_btc_device(address)?;
-    let btc_address_u64 = btc_device
+    let btc_address = btc_device
         .BluetoothAddress()
         .map_err(|e| anyhow!("Failed to get btc address - {e}"))?;
-    let btc_address_mac = format!("{btc_address_u64:012X}");
     let btc_status = btc_device
         .ConnectionStatus()
         .map(|status| status == BluetoothConnectionStatus::Connected)
         .unwrap_or(false);
 
-    if btc_address_mac == pnp_device_address
+    if btc_address == pnp_device_address
         && (thread_bluetooth_device.status != btc_status
             || thread_bluetooth_device.battery != pnp_device_battery)
     {
@@ -264,7 +263,7 @@ fn process_classic_device(
             name: thread_bluetooth_device.name.clone(),
             battery: pnp_device_battery,
             status: btc_status,
-            address: btc_address_mac,
+            address: btc_address,
             r#type: thread_bluetooth_device.r#type.clone(),
         };
 
