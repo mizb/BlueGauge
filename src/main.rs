@@ -121,7 +121,6 @@ impl ApplicationHandler<UserEvent> for App {
             .unwrap()
             .deref()
             .get_address()
-
             && let Some(bluetooth_info) = self
                 .bluetooth_info
                 .lock()
@@ -285,7 +284,7 @@ impl ApplicationHandler<UserEvent> for App {
                     "Need to update the info immediately: {}",
                     bluetooth_info.name
                 );
-                let update_bt_info_address = bluetooth_info.address.clone();
+                let update_bt_info_address = bluetooth_info.address;
 
                 let current_bt_infos = {
                     let mut original_bt_info = self.bluetooth_info.lock().unwrap();
@@ -296,14 +295,14 @@ impl ApplicationHandler<UserEvent> for App {
 
                 let config = Arc::clone(&self.config);
 
-                let (tray_menu, new_tray_check_menus) = match create_menu(&config, &current_bt_infos)
-                {
-                    Ok(menu) => menu,
-                    Err(e) => {
-                        app_notify(format!("Failed to create tray menu - {e}"));
-                        return;
-                    }
-                };
+                let (tray_menu, new_tray_check_menus) =
+                    match create_menu(&config, &current_bt_infos) {
+                        Ok(menu) => menu,
+                        Err(e) => {
+                            app_notify(format!("Failed to create tray menu - {e}"));
+                            return;
+                        }
+                    };
 
                 if let Some(tray) = &self.tray.lock().unwrap().as_mut() {
                     let bluetooth_tooltip_info = convert_tray_info(&current_bt_infos, &config);
@@ -312,17 +311,21 @@ impl ApplicationHandler<UserEvent> for App {
                         .expect("Failed to update tray tooltip");
 
                     let tray_icon_bt_address = {
-                        self.config.tray_options.tray_icon_source.lock().unwrap().get_address()
+                        self.config
+                            .tray_options
+                            .tray_icon_source
+                            .lock()
+                            .unwrap()
+                            .get_address()
                     };
 
-                    if let Some(tray_icon_bt_address) = tray_icon_bt_address {
-                        if tray_icon_bt_address == update_bt_info_address {
-                            let icon = load_battery_icon(&config, &current_bt_infos)
-                                .expect("Failed to load battery icon");
-                            tray.set_icon(Some(icon)).expect("Failed to set tray icon");
-                        }
+                    if let Some(tray_icon_bt_address) = tray_icon_bt_address
+                        && tray_icon_bt_address == update_bt_info_address
+                    {
+                        let icon = load_battery_icon(&config, &current_bt_infos)
+                            .expect("Failed to load battery icon");
+                        tray.set_icon(Some(icon)).expect("Failed to set tray icon");
                     }
-
                 }
 
                 if let Some(tray_check_menus) = self.tray_check_menus.lock().unwrap().as_mut() {

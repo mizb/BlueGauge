@@ -137,7 +137,7 @@ fn get_pnp_devices_info() -> Result<HashMap<u64, PnpDeviceInfo>> {
 
             if let (Some(address), Some(battery)) = (address, battery) {
                 pnp_devices_info.insert(
-                    address.clone(),
+                    address,
                     PnpDeviceInfo {
                         address,
                         battery,

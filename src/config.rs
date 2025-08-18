@@ -69,7 +69,7 @@ struct NotifyOptionsToml {
 impl TrayIconSource {
     pub fn update_address(&mut self, new_address: u64) {
         match self {
-            Self::App => (),   
+            Self::App => (),
             Self::BatteryCustom { address } => {
                 *address = new_address;
             }

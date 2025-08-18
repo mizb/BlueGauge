@@ -63,11 +63,10 @@ impl CreateMenuItem {
             .iter()
             .map(|info| {
                 CheckMenuItem::with_id(
-                    &info.address,
+                    info.address,
                     config.get_device_aliases_name(&info.name),
                     true,
-                    show_tray_battery_icon_bt_address
-                        .is_some_and(|id| id.eq(&info.address)),
+                    show_tray_battery_icon_bt_address.is_some_and(|id| id.eq(&info.address)),
                     None,
                 )
             })

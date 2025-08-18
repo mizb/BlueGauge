@@ -2,7 +2,7 @@ use crate::bluetooth::info::{BluetoothInfo, BluetoothType};
 
 use std::{
     collections::HashSet,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use anyhow::{Context, Result, anyhow};

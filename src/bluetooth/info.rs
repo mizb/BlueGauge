@@ -136,7 +136,7 @@ pub fn compare_bt_info_to_send_notifications(
                                     format!("{} {low_battery}%", loc.bluetooth_battery_below);
                                 let text = format!("{}: {}%", new.name, new.battery);
                                 notify(title, text, mute);
-                                notified_low_battery_devices.insert(new.address.clone());
+                                notified_low_battery_devices.insert(new.address);
                             }
                             (true, false) => {
                                 // 电量回升，允许下次低电量时再次通知
