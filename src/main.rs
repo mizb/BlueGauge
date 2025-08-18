@@ -113,14 +113,14 @@ impl App {
         // 如果已有一个监控任务在运行，先停止它
         if let Some(monitor) = self.watcher.take() {
             if let Err(e) = monitor.stop() {
-                eprintln!("停止上一个监视器失败: {}", e);
+                eprintln!("Stop the previous watch failed: {e}");
             }
         }
 
         if let Some(proxy) = &self.event_loop_proxy {
             match Watcher::start(device, proxy.clone()) {
                 Ok(monitor) => self.watcher = Some(monitor),
-                Err(e) => eprintln!("启动设备监视器失败: {}", e),
+                Err(e) => eprintln!("Failed to start the bluetooth watch: {e}"),
             }
         }
     }
@@ -128,7 +128,7 @@ impl App {
     fn stop_watch(&mut self) {
         if let Some(monitor) = self.watcher.take() {
             if let Err(e) = monitor.stop() {
-                eprintln!("停止监视器失败: {}", e);
+                eprintln!("Stop the previous watch failed: {e}");
             }
         }
     }
@@ -149,36 +149,12 @@ impl ApplicationHandler<UserEvent> for App {
         };
 
         if let Some(address) = watch_bt_address {
-            let bt_devices = self
-                .bluetooth_info
-                .lock()
-                .unwrap()
-                .clone();
+            let bt_devices = self.bluetooth_info.lock().unwrap().clone();
 
             if let Some(i) = bt_devices.iter().find(|i| i.address == address) {
-                    self.start_watch_device(i.clone());
+                self.start_watch_device(i.clone());
             }
         }
-        // if let Some(bluetooth_device_address) = config
-        //     .tray_options
-        //     .tray_icon_source
-        //     .lock()
-        //     .unwrap()
-        //     .deref()
-        //     .get_address()
-        //     && let Some(bluetooth_info) = self
-        //         .bluetooth_info
-        //         .lock()
-        //         .unwrap()
-        //         .iter()
-        //         .find(|i| i.address == bluetooth_device_address)
-        //     && let Err(e) =
-        //         listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone()))
-        // {
-        //     println!("Failed to listen {}: {e}", bluetooth_info.name)
-        // };
-
-
 
         listen_bluetooth_devices_info(config.clone(), proxy.clone());
 
@@ -369,12 +345,13 @@ impl ApplicationHandler<UserEvent> for App {
                             .get_address()
                     };
 
-                    if let Some(tray_icon_bt_address) = tray_icon_bt_address 
-                        && tray_icon_bt_address == update_bt_info_address {
-                            let icon = load_battery_icon(&config, &current_bt_infos)
-                                .expect("Failed to load battery icon");
-                            tray.set_icon(Some(icon)).expect("Failed to set tray icon");
-                        }
+                    if let Some(tray_icon_bt_address) = tray_icon_bt_address
+                        && tray_icon_bt_address == update_bt_info_address
+                    {
+                        let icon = load_battery_icon(&config, &current_bt_infos)
+                            .expect("Failed to load battery icon");
+                        tray.set_icon(Some(icon)).expect("Failed to set tray icon");
+                    }
                 }
 
                 if let Some(tray_check_menus) = self.tray_check_menus.lock().unwrap().as_mut() {

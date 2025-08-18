@@ -43,10 +43,7 @@ pub struct Watcher {
 }
 
 impl Watcher {
-    pub fn start(
-        device: BluetoothInfo,
-        proxy: EventLoopProxy<UserEvent>,
-    ) -> Result<Self> {
+    pub fn start(device: BluetoothInfo, proxy: EventLoopProxy<UserEvent>) -> Result<Self> {
         println!("[{}]: Starting the watch thread...", device.name);
         let exit_flag = Arc::new(AtomicBool::new(false));
         let thread_exit_flag = exit_flag.clone();
@@ -66,12 +63,13 @@ impl Watcher {
     pub fn stop(mut self) -> Result<()> {
         println!("[{}]: Stopping the watch thread...", self.device_name);
         if let (Some(handle), exit_flag) = (self.handle.take(), &self.exit_flag) {
-            // 1. 设置退出标志
             exit_flag.store(true, Ordering::Relaxed);
 
-            // 2. 等待线程结束
             if let Err(_) = handle.join() {
-                return Err(anyhow!("[{}]: Panic occurs during thread cleaning", self.device_name));
+                return Err(anyhow!(
+                    "[{}]: Panic occurs during thread cleaning",
+                    self.device_name
+                ));
             }
             println!("[{}]: The watch thread has been stopped.", self.device_name);
         }
@@ -84,7 +82,10 @@ fn watch_loop(
     proxy: EventLoopProxy<UserEvent>,
     exit_flag: Arc<AtomicBool>,
 ) {
-    println!("[{}]: The watch thread is started。", initial_device_info.name);
+    println!(
+        "[{}]: The watch thread is started。",
+        initial_device_info.name
+    );
     let mut current_device_info = initial_device_info;
 
     // 如果是 BLE 设备，则只创建一次 Tokio 运行时
@@ -96,20 +97,13 @@ fn watch_loop(
 
     while !exit_flag.load(Ordering::Relaxed) {
         let processing_result = match &current_device_info.r#type {
-            BluetoothType::Classic(instance_id) => process_classic_device(
-                instance_id,
-                &current_device_info,
-                &proxy,
-            ),
+            BluetoothType::Classic(instance_id) => {
+                process_classic_device(instance_id, &current_device_info, &proxy)
+            }
             BluetoothType::LowEnergy => {
                 // 复用已创建的运行时
                 let rt = runtime.as_ref().unwrap();
-                process_le_device(
-                    &current_device_info,
-                    &proxy,
-                    &exit_flag,
-                    rt,
-                )
+                process_le_device(&current_device_info, &proxy, &exit_flag, rt)
             }
         };
 
@@ -122,9 +116,12 @@ fn watch_loop(
                 current_device_info = new_info;
             }
             Err(e) => {
-                eprintln!("[{}]: 处理设备时出错: {e}。线程即将退出。", current_device_info.name);
+                eprintln!(
+                    "[{}]: Failed to process device - {e}",
+                    current_device_info.name
+                );
                 break; // 遇到严重错误时退出循环
-            },
+            }
             _ => (), // 没有更新，继续循环
         }
 
@@ -140,7 +137,10 @@ fn watch_loop(
         // 对于 BLE 设备, `watch_ble_device` 函数会自己处理等待，可立即进入下一次循环。
     }
 
-    println!("[{}] 监控线程已退出。", current_device_info.name);
+    println!(
+        "[{}]: The watch thread has exited.",
+        current_device_info.name
+    );
 }
 
 fn process_classic_device(
@@ -150,9 +150,9 @@ fn process_classic_device(
 ) -> Result<Option<BluetoothInfo>> {
     let pnp_info = get_pnp_device_info(instance_id)?;
     let btc_device = find_btc_device(current_device_info.address)?;
-    
+
     let btc_status = btc_device.ConnectionStatus()? == BluetoothConnectionStatus::Connected;
-    
+
     // 检查是否有必要更新
     if current_device_info.status != btc_status
         || current_device_info.battery != pnp_info.battery
@@ -187,7 +187,7 @@ fn process_le_device(
                 BluetoothLEDeviceUpdate::BatteryLevel(battery) => new_info.battery = battery,
                 BluetoothLEDeviceUpdate::ConnectionStatus(status) => new_info.status = status,
             };
-            
+
             let _ = proxy.send_event(UserEvent::UpdateTrayForBluetooth(new_info.clone()));
             Ok(Some(new_info))
         }
