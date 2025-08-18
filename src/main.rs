@@ -15,7 +15,7 @@ use crate::bluetooth::info::{
     BluetoothInfo, compare_bt_info_to_send_notifications, find_bluetooth_devices,
     get_bluetooth_info,
 };
-use crate::bluetooth::listen::{listen_bluetooth_device_info, listen_bluetooth_devices_info};
+use crate::bluetooth::listen::{Watcher, listen_bluetooth_devices_info};
 use crate::config::*;
 use crate::icon::{SystemTheme, load_battery_icon};
 use crate::menu_handlers::MenuHandlers;
@@ -23,7 +23,6 @@ use crate::notify::app_notify;
 use crate::tray::{convert_tray_info, create_menu, create_tray};
 
 use std::collections::HashSet;
-use std::ops::Deref;
 use std::sync::{Arc, Mutex, RwLock};
 
 use tray_icon::{
@@ -63,6 +62,7 @@ fn main() -> anyhow::Result<()> {
 struct App {
     bluetooth_info: Arc<Mutex<HashSet<BluetoothInfo>>>,
     config: Arc<Config>,
+    watcher: Option<Watcher>,
     event_loop_proxy: Option<EventLoopProxy<UserEvent>>,
     /// 存储已经通知过的低电量设备，避免再次通知
     notified_low_battery_devices: Arc<Mutex<HashSet<u64>>>,
@@ -86,6 +86,7 @@ impl Default for App {
         Self {
             bluetooth_info: Arc::new(Mutex::new(bluetooth_devices_info)),
             config: Arc::new(config),
+            watcher: None,
             event_loop_proxy: None,
             notified_low_battery_devices: Arc::new(Mutex::new(HashSet::new())),
             system_theme: Arc::new(RwLock::new(SystemTheme::get())),
@@ -107,6 +108,30 @@ impl App {
         self.event_loop_proxy = event_loop_proxy;
         self
     }
+
+    fn start_watch_device(&mut self, device: BluetoothInfo) {
+        // 如果已有一个监控任务在运行，先停止它
+        if let Some(monitor) = self.watcher.take() {
+            if let Err(e) = monitor.stop() {
+                eprintln!("停止上一个监视器失败: {}", e);
+            }
+        }
+
+        if let Some(proxy) = &self.event_loop_proxy {
+            match Watcher::start(device, proxy.clone()) {
+                Ok(monitor) => self.watcher = Some(monitor),
+                Err(e) => eprintln!("启动设备监视器失败: {}", e),
+            }
+        }
+    }
+
+    fn stop_watch(&mut self) {
+        if let Some(monitor) = self.watcher.take() {
+            if let Err(e) = monitor.stop() {
+                eprintln!("停止监视器失败: {}", e);
+            }
+        }
+    }
 }
 
 impl ApplicationHandler<UserEvent> for App {
@@ -114,24 +139,46 @@ impl ApplicationHandler<UserEvent> for App {
         let config = Arc::clone(&self.config);
         let proxy = self.event_loop_proxy.clone().expect("Failed to get proxy");
 
-        if let Some(bluetooth_device_address) = config
-            .tray_options
-            .tray_icon_source
-            .lock()
-            .unwrap()
-            .deref()
-            .get_address()
-            && let Some(bluetooth_info) = self
+        let watch_bt_address = {
+            config
+                .tray_options
+                .tray_icon_source
+                .lock()
+                .unwrap()
+                .get_address()
+        };
+
+        if let Some(address) = watch_bt_address {
+            let bt_devices = self
                 .bluetooth_info
                 .lock()
                 .unwrap()
-                .iter()
-                .find(|i| i.address == bluetooth_device_address)
-            && let Err(e) =
-                listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone()))
-        {
-            println!("Failed to listen {}: {e}", bluetooth_info.name)
-        };
+                .clone();
+
+            if let Some(i) = bt_devices.iter().find(|i| i.address == address) {
+                    self.start_watch_device(i.clone());
+            }
+        }
+        // if let Some(bluetooth_device_address) = config
+        //     .tray_options
+        //     .tray_icon_source
+        //     .lock()
+        //     .unwrap()
+        //     .deref()
+        //     .get_address()
+        //     && let Some(bluetooth_info) = self
+        //         .bluetooth_info
+        //         .lock()
+        //         .unwrap()
+        //         .iter()
+        //         .find(|i| i.address == bluetooth_device_address)
+        //     && let Err(e) =
+        //         listen_bluetooth_device_info(Some(bluetooth_info), true, Some(proxy.clone()))
+        // {
+        //     println!("Failed to listen {}: {e}", bluetooth_info.name)
+        // };
+
+
 
         listen_bluetooth_devices_info(config.clone(), proxy.clone());
 
@@ -212,14 +259,17 @@ impl ApplicationHandler<UserEvent> for App {
                         MenuHandlers::set_tray_tooltip(&config, menu_event_id, tray_check_menus);
                     }
                     _ => {
-                        let proxy = self.event_loop_proxy.clone().expect("Failed to get proxy");
-                        MenuHandlers::set_tray_icon_source(
+                        let need_update = MenuHandlers::set_tray_icon_source(
                             self.bluetooth_info.lock().unwrap().clone(),
                             &config,
                             menu_event_id,
-                            proxy,
                             tray_check_menus,
                         );
+                        if let Some(info) = need_update {
+                            self.start_watch_device(info);
+                        } else {
+                            self.stop_watch();
+                        }
                     }
                 }
             }
@@ -319,13 +369,12 @@ impl ApplicationHandler<UserEvent> for App {
                             .get_address()
                     };
 
-                    if let Some(tray_icon_bt_address) = tray_icon_bt_address
-                        && tray_icon_bt_address == update_bt_info_address
-                    {
-                        let icon = load_battery_icon(&config, &current_bt_infos)
-                            .expect("Failed to load battery icon");
-                        tray.set_icon(Some(icon)).expect("Failed to set tray icon");
-                    }
+                    if let Some(tray_icon_bt_address) = tray_icon_bt_address 
+                        && tray_icon_bt_address == update_bt_info_address {
+                            let icon = load_battery_icon(&config, &current_bt_infos)
+                                .expect("Failed to load battery icon");
+                            tray.set_icon(Some(icon)).expect("Failed to set tray icon");
+                        }
                 }
 
                 if let Some(tray_check_menus) = self.tray_check_menus.lock().unwrap().as_mut() {
