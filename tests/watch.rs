@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use windows::{
     Devices::{
         Bluetooth::{
-            BluetoothConnectionStatus, BluetoothLEDevice, BluetoothDevice,
+            BluetoothConnectionStatus, BluetoothDevice, BluetoothLEDevice,
             GenericAttributeProfile::{
                 GattCharacteristic, GattCharacteristicProperties, GattCharacteristicUuids,
                 GattClientCharacteristicConfigurationDescriptorValue, GattCommunicationStatus,
@@ -183,9 +183,7 @@ impl BluetoothWatcher {
         let ble_selector = BluetoothLEDevice::GetDeviceSelector()?;
         let classic_selector = BluetoothDevice::GetDeviceSelector()?;
 
-        let aqs_filter = HSTRING::from(
-            format!("({}) OR ({})", ble_selector, classic_selector)
-        );
+        let aqs_filter = HSTRING::from(format!("({}) OR ({})", ble_selector, classic_selector));
 
         let watcher = DeviceInformation::CreateWatcherAqsFilter(&aqs_filter)?;
 
