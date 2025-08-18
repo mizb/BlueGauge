@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use windows::{
     Devices::{
         Bluetooth::{
-            BluetoothConnectionStatus, BluetoothLEDevice,
+            BluetoothConnectionStatus, BluetoothLEDevice, BluetoothDevice,
             GenericAttributeProfile::{
                 GattCharacteristic, GattCharacteristicProperties, GattCharacteristicUuids,
                 GattClientCharacteristicConfigurationDescriptorValue, GattCommunicationStatus,
@@ -133,7 +133,7 @@ async fn watch() -> Result<()> {
 
     watcher.start()?;
 
-    if let Some(event) = rx.recv().await {
+    while let Some(event) = rx.recv().await {
         match event {
             DeviceEvent::Added(device) => {
                 let name = device.Name()?.to_string_lossy();
@@ -180,8 +180,11 @@ impl Drop for BluetoothWatcher {
 
 impl BluetoothWatcher {
     fn new(tx: mpsc::UnboundedSender<DeviceEvent>) -> Result<Self> {
+        let ble_selector = BluetoothLEDevice::GetDeviceSelector()?;
+        let classic_selector = BluetoothDevice::GetDeviceSelector()?;
+
         let aqs_filter = HSTRING::from(
-            r#"System.Devices.Aep.ProtocolId:="{bb7bb05e-5972-42b5-94fc-76eaa7084d49}""#,
+            format!("({}) OR ({})", ble_selector, classic_selector)
         );
 
         let watcher = DeviceInformation::CreateWatcherAqsFilter(&aqs_filter)?;
@@ -191,7 +194,8 @@ impl BluetoothWatcher {
         let added_token = watcher.Added(&TypedEventHandler::new(
             move |_watcher: Ref<DeviceWatcher>, device_info: Ref<DeviceInformation>| {
                 if let Some(device) = device_info.as_ref() {
-                    let _ = added_tx.send(DeviceEvent::Added(device.clone()));
+                    // let _ = added_tx.send(DeviceEvent::Added(device.clone()));
+                    println!("Add {}", device.Name().unwrap())
                 }
                 Ok(())
             },
@@ -203,6 +207,7 @@ impl BluetoothWatcher {
             move |_watcher: Ref<DeviceWatcher>, update: Ref<DeviceInformationUpdate>| {
                 if let Some(update) = update.as_ref() {
                     let _ = removed_tx.send(DeviceEvent::Removed(update.clone()));
+                    println!("Removed {}", update.Id().unwrap())
                 }
                 Ok(())
             },
@@ -214,6 +219,7 @@ impl BluetoothWatcher {
             move |_watcher: Ref<DeviceWatcher>, update: Ref<DeviceInformationUpdate>| {
                 if let Some(update) = update.as_ref() {
                     let _ = updated_tx.send(DeviceEvent::Updated(update.clone()));
+                    println!("Updated {}", update.Id().unwrap())
                 }
                 Ok(())
             },
