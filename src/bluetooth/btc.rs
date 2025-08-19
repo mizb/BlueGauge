@@ -114,7 +114,7 @@ pub fn process_btc_device(
     })
 }
 
-fn get_pnp_devices_info() -> Result<HashMap<u64, PnpDeviceInfo>> {
+pub fn get_pnp_devices_info() -> Result<HashMap<u64, PnpDeviceInfo>> {
     let mut pnp_devices_info: HashMap<u64, PnpDeviceInfo> = HashMap::new();
 
     let bt_devices_info = get_pnp_bt_devices()?;
