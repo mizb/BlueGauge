@@ -156,7 +156,7 @@ fn process_classic_device(
     // 检查是否有必要更新
     if current_device_info.status != btc_status
         || current_device_info.battery != pnp_info.battery
-        || current_device_info.address == pnp_info.address
+        && current_device_info.address == pnp_info.address
     {
         let new_info = BluetoothInfo {
             status: btc_status,
