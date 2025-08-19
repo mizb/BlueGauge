@@ -235,13 +235,13 @@ impl ApplicationHandler<UserEvent> for App {
                         MenuHandlers::set_tray_tooltip(&config, menu_event_id, tray_check_menus);
                     }
                     _ => {
-                        let need_update = MenuHandlers::set_tray_icon_source(
+                        let need_watch = MenuHandlers::set_tray_icon_source(
                             self.bluetooth_info.lock().unwrap().clone(),
                             &config,
                             menu_event_id,
                             tray_check_menus,
                         );
-                        if let Some(info) = need_update {
+                        if let Some(info) = need_watch {
                             self.start_watch_device(info);
                         } else {
                             self.stop_watch();
