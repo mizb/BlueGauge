@@ -98,4 +98,8 @@ A lightweight tray tool for easily checking the battery level of your Bluetooth 
 
  - 华为：[OpenFreebuds](https://github.com/melianmiko/OpenFreebuds)
 
- - 三星：[Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)
+ - 三星：  
+
+    - [Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)   
+
+    - [Galaxy Buds Client](https://github.com/timschneeb/GalaxyBudsClient)  

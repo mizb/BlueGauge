@@ -93,4 +93,8 @@ Welcome contributions from developers who can help us extend support for these d
 
  - Huawei: [OpenFreebuds](https://github.com/melianmiko/OpenFreebuds)
 
- - Samsung: [Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)
+ - Samsung:
+
+    - [Galaxy Buds](https://apps.microsoft.com/detail/9NHTLWTKFZNB)
+
+    - [Galaxy Buds Client](https://github.com/timschneeb/GalaxyBudsClient)  
