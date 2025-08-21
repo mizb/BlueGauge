@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 use anyhow::{Result, anyhow};
+use log::warn;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -209,7 +210,7 @@ impl Config {
 
         if config_path.is_file() {
             Config::read_toml(config_path.clone()).or_else(|e| {
-                println!("Failed to read config file: {e}");
+                warn!("Failed to read config file: {e}");
                 Config::create_toml(config_path)
             })
         } else {

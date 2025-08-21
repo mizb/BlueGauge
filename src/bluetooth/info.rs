@@ -14,6 +14,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
+use log::{info, warn};
 use windows::Devices::Bluetooth::{BluetoothDevice, BluetoothLEDevice};
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -46,17 +47,30 @@ pub fn get_bluetooth_info(
         (0, 0) => Err(anyhow!(
             "No Classic Bluetooth and Bluetooth LE devices found"
         )),
-        (0, _) => dbg!(get_ble_info(ble_devices).or_else(|e| {
-            app_notify(format!("Warning: Failed to get BLE info: {e}"));
-            Ok(HashSet::new())
-        })),
-        (_, 0) => dbg!(get_btc_info(btc_devices).or_else(|e| {
-            app_notify(format!("Warning: Failed to get BTC info: {e}"));
-            Ok(HashSet::new())
-        })),
+        (0, _) => {
+            let ble_result = get_ble_info(ble_devices);
+            info!("{ble_result:#?}");
+
+            ble_result.or_else(|e| {
+                app_notify(format!("Warning: Failed to get BLE info: {e}"));
+                Ok(HashSet::new())
+            })
+        },
+        (_, 0) => {
+            let btc_result = get_btc_info(btc_devices);
+            info!("{btc_result:#?}");
+
+            btc_result.or_else(|e| {
+                app_notify(format!("Warning: Failed to get BTC info: {e}"));
+                Ok(HashSet::new())
+            })
+        },
         (_, _) => {
-            let btc_result = dbg!(get_btc_info(btc_devices));
-            let ble_result = dbg!(get_ble_info(ble_devices));
+            let btc_result = get_btc_info(btc_devices);
+            let ble_result = get_ble_info(ble_devices);
+
+            info!("{btc_result:#?}");
+            info!("{ble_result:#?}");
 
             match (btc_result, ble_result) {
                 (Ok(btc_info), Ok(ble_info)) => {
@@ -64,11 +78,11 @@ pub fn get_bluetooth_info(
                     Ok(combined_info)
                 }
                 (Ok(btc_info), Err(e)) => {
-                    println!("Warning: Failed to get BLE info: {e}");
+                    warn!("Failed to get BLE info: {e}");
                     Ok(btc_info)
                 }
                 (Err(e), Ok(ble_info)) => {
-                    println!("Warning: Failed to get BTC info: {e}");
+                    warn!("Failed to get BTC info: {e}");
                     Ok(ble_info)
                 }
                 (Err(btc_err), Err(ble_err)) => Err(anyhow!(

@@ -3,6 +3,7 @@ use crate::bluetooth::info::{BluetoothInfo, BluetoothType};
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Context, Result, anyhow};
+use log::{error, warn};
 use windows::Devices::{
     Bluetooth::{BluetoothConnectionStatus, BluetoothDevice},
     Enumeration::DeviceInformation,
@@ -70,7 +71,7 @@ pub fn get_btc_info(btc_devices: &[BluetoothDevice]) -> Result<HashSet<Bluetooth
                             "Trying to enumerate the pnp device twice failed: {e}"
                         )); // 达到最大重试次数，返回错误
                     }
-                    println!(
+                    error!(
                         "Failed to get Bluetooth device information: {e}, try again after 2 seconds... (try {attempts}/{max_retries})"
                     );
                     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -83,7 +84,7 @@ pub fn get_btc_info(btc_devices: &[BluetoothDevice]) -> Result<HashSet<Bluetooth
 
     btc_devices.iter().for_each(|btc_device| {
         let _ = process_btc_device(btc_device, &pnp_devices_info)
-            .inspect_err(|e| println!("\n{e}\n"))
+            .inspect_err(|e| warn!("{e}"))
             .is_ok_and(|bt_info| devices_info.insert(bt_info));
     });
 
