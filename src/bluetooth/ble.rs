@@ -12,7 +12,7 @@ use windows::{
         BluetoothConnectionStatus, BluetoothLEDevice,
         GenericAttributeProfile::{
             GattCharacteristicProperties, GattCharacteristicUuids,
-            GattClientCharacteristicConfigurationDescriptorValue, GattCommunicationStatus,
+            // GattClientCharacteristicConfigurationDescriptorValue, GattCommunicationStatus,
             GattServiceUuids, GattValueChangedEventArgs,
         },
     },
@@ -211,15 +211,15 @@ pub async fn watch_ble_device(
         let _ = battery_gatt_char.RemoveValueChanged(battery_token);
     }
 
-    let status = battery_gatt_char
-        .WriteClientCharacteristicConfigurationDescriptorAsync(
-            GattClientCharacteristicConfigurationDescriptorValue::Notify,
-        )?
-        .get()?;
-    if status != GattCommunicationStatus::Success {
-        let _ = tx.try_send(BluetoothLEDeviceUpdate::ConnectionStatus(false));
-        return Err(anyhow!("Failed to subscribe to notifications"));
-    }
+    // let status = battery_gatt_char
+    //     .WriteClientCharacteristicConfigurationDescriptorAsync(
+    //         GattClientCharacteristicConfigurationDescriptorValue::Notify,
+    //     )?
+    //     .get()?;
+    // if status != GattCommunicationStatus::Success {
+    //     // let _ = tx.try_send(BluetoothLEDeviceUpdate::ConnectionStatus(false));
+    //     // eprintln!("Failed to subscribe to notifications");
+    // }
 
     tokio::select! {
         maybe_update = rx.recv() => {
