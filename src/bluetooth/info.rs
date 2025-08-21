@@ -31,15 +31,6 @@ pub struct BluetoothInfo {
     pub r#type: BluetoothType,
 }
 
-// impl BluetoothInfo {
-//     pub fn get_address(&self) -> u64 {
-//         match self.r#type {
-//             BluetoothType::Classic(_, address) => address,
-//             BluetoothType::LowEnergy(address) => address,
-//         }
-//     }
-// }
-
 pub fn find_bluetooth_devices() -> Result<(Vec<BluetoothDevice>, Vec<BluetoothLEDevice>)> {
     let bt_devices = find_btc_devices()?;
     let ble_devices = find_ble_devices()?;
